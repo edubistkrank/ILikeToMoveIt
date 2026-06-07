@@ -1,0 +1,273 @@
+using BepInEx;
+using BepInEx.Logging;
+using HarmonyLib;
+using System.Collections;
+using UnityEngine;
+
+namespace ILikeToMoveIt;
+
+[BepInPlugin(PluginInfo.Guid, PluginInfo.Name, PluginInfo.Version)]
+public sealed class Plugin : BaseUnityPlugin
+{
+    private Harmony harmony;
+    internal static ManualLogSource Log { get; private set; }
+    private static Plugin Instance { get; set; }
+
+    private static bool moveSessionActive;
+    private static bool moveSessionCommitted;
+    private static bool moveSessionStartingPlacement;
+    private static TechType moveTechType = TechType.None;
+    private static Vector3 moveOriginalPosition;
+    private static Quaternion moveOriginalRotation;
+    private static GameObject moveOriginalObject;
+
+    private void Awake()
+    {
+        Instance = this;
+        Log = Logger;
+        harmony = new Harmony(PluginInfo.Guid);
+        harmony.PatchAll();
+        Log.LogInfo($"{PluginInfo.Name} {PluginInfo.Version} loaded.");
+    }
+
+    private void OnDestroy()
+    {
+        harmony?.UnpatchSelf();
+        if (ReferenceEquals(Instance, this))
+        {
+            Instance = null;
+        }
+    }
+
+    private static bool IsMoveModifierHeld()
+    {
+        return GameInput.GetButtonHeld(GameInput.Button.AltTool)
+            || UnityEngine.Input.GetKey(UnityEngine.KeyCode.LeftAlt)
+            || UnityEngine.Input.GetKey(UnityEngine.KeyCode.RightAlt);
+    }
+
+    private static bool IsMovableLocker(Constructable constructable)
+    {
+        if (constructable == null || !constructable.constructed)
+        {
+            return false;
+        }
+
+        return constructable.techType == TechType.Locker || constructable.techType == TechType.SmallLocker;
+    }
+
+    private static bool IsLockerEmpty(Constructable constructable)
+    {
+        StorageContainer storage = constructable.GetComponent<StorageContainer>();
+        return storage == null || storage.IsEmpty();
+    }
+
+    private static IEnumerator BeginPlacingAsync(TechType techType)
+    {
+        if (techType == TechType.None)
+        {
+            yield break;
+        }
+
+        moveSessionStartingPlacement = true;
+        yield return Builder.BeginAsync(techType);
+        moveSessionStartingPlacement = false;
+    }
+
+    private static Constructable FindPlacedUnconstructedLocker(TechType techType, Vector3 position)
+    {
+        Constructable best = null;
+        float bestDistSqr = 100f;
+        Constructable[] all = Object.FindObjectsOfType<Constructable>();
+        for (int i = 0; i < all.Length; i++)
+        {
+            Constructable c = all[i];
+            if (c == null || c.techType != techType || c.constructed)
+            {
+                continue;
+            }
+
+            float distSqr = (c.transform.position - position).sqrMagnitude;
+            if (distSqr <= bestDistSqr)
+            {
+                bestDistSqr = distSqr;
+                best = c;
+            }
+        }
+
+        return best;
+    }
+
+    private static void ClearMoveSession()
+    {
+        moveSessionActive = false;
+        moveSessionCommitted = false;
+        moveSessionStartingPlacement = false;
+        moveTechType = TechType.None;
+        moveOriginalPosition = default;
+        moveOriginalRotation = default;
+        moveOriginalObject = null;
+    }
+
+    [HarmonyPatch(typeof(BuilderTool), "GetCustomUseText")]
+    private static class BuilderTool_GetCustomUseText_Patch
+    {
+        private static void Postfix(ref string __result)
+        {
+            string alt = GameInput.FormatButton(GameInput.Button.AltTool, false);
+            string left = GameInput.FormatButton(GameInput.Button.LeftHand, false);
+            string hint = $"{alt} + {left}: Mover locker";
+            __result = string.IsNullOrEmpty(__result)
+                ? hint
+                : $"{__result}\n{hint}";
+        }
+    }
+
+    private static bool TryMoveTargetedLocker()
+    {
+        if (Builder.isPlacing || !AvatarInputHandler.main.IsEnabled() || moveSessionActive)
+        {
+            return false;
+        }
+
+        Targeting.AddToIgnoreList(Player.main.gameObject);
+        Targeting.GetTarget(30f, out GameObject target, out float distance);
+        if (target == null)
+        {
+            return false;
+        }
+
+        Constructable constructable = target.GetComponentInParent<Constructable>();
+        if (constructable == null || !constructable.constructed || distance > constructable.placeMaxDistance)
+        {
+            return false;
+        }
+
+        if (!IsMovableLocker(constructable))
+        {
+            ErrorMessage.AddMessage("Mover solo funciona con floor locker y wall locker");
+            return true;
+        }
+
+        if (!IsLockerEmpty(constructable))
+        {
+            ErrorMessage.AddMessage("Solo puedes mover lockers vacíos");
+            return true;
+        }
+
+        moveSessionActive = true;
+        moveSessionCommitted = false;
+        moveTechType = constructable.techType;
+        moveOriginalPosition = constructable.transform.position;
+        moveOriginalRotation = constructable.transform.rotation;
+        moveOriginalObject = constructable.gameObject;
+
+        Builder.ResetLast();
+        constructable.gameObject.SetActive(false);
+        if (Instance != null)
+        {
+            Instance.StartCoroutine(BeginPlacingAsync(moveTechType));
+        }
+
+        return true;
+    }
+
+    [HarmonyPatch(typeof(BuilderTool), "OnLeftHandDown")]
+    private static class BuilderTool_OnLeftHandDown_Patch
+    {
+        private static bool Prefix(ref bool __result)
+        {
+            if (Builder.isPlacing)
+            {
+                return true;
+            }
+
+            if (!IsMoveModifierHeld())
+            {
+                return true;
+            }
+
+            __result = TryMoveTargetedLocker();
+            return false;
+        }
+    }
+
+    [HarmonyPatch(typeof(Builder), "TryPlace")]
+    private static class Builder_TryPlace_Patch
+    {
+        private static void Postfix(bool __result)
+        {
+            if (!moveSessionActive || !__result)
+            {
+                return;
+            }
+
+            GameObject ghost = Builder.GetGhostModel();
+            Vector3 placement = ghost != null ? ghost.transform.position : moveOriginalPosition;
+            Constructable placed = FindPlacedUnconstructedLocker(moveTechType, placement);
+            if (placed != null)
+            {
+                placed.SetState(true, true);
+            }
+
+            moveSessionCommitted = true;
+            Builder.ResetLast();
+            Builder.End();
+        }
+    }
+
+    [HarmonyPatch(typeof(Builder), "End")]
+    private static class Builder_End_Patch
+    {
+        private static void Postfix()
+        {
+            if (!moveSessionActive || moveSessionStartingPlacement)
+            {
+                return;
+            }
+
+            bool committed = moveSessionCommitted;
+            GameObject originalObject = moveOriginalObject;
+            Vector3 originalPosition = moveOriginalPosition;
+            Quaternion originalRotation = moveOriginalRotation;
+            ClearMoveSession();
+
+            if (originalObject == null)
+            {
+                return;
+            }
+
+            if (committed)
+            {
+                Object.Destroy(originalObject);
+                return;
+            }
+
+            originalObject.transform.position = originalPosition;
+            originalObject.transform.rotation = originalRotation;
+            originalObject.SetActive(true);
+        }
+    }
+
+    [HarmonyPatch(typeof(BuilderTool), "OnHover", typeof(Constructable))]
+    private static class BuilderTool_OnHover_Patch
+    {
+        private static void Postfix(Constructable constructable)
+        {
+            if (!IsMoveModifierHeld() || !IsMovableLocker(constructable))
+            {
+                return;
+            }
+
+            string alt = GameInput.FormatButton(GameInput.Button.AltTool, false);
+            string left = GameInput.FormatButton(GameInput.Button.LeftHand, false);
+            string action = IsLockerEmpty(constructable)
+                ? "Mover locker"
+                : "Locker no vacío";
+
+            HandReticle main = HandReticle.main;
+            main.SetText(HandReticle.TextType.HandSubscript, $"{alt} + {left}: {action}", false, GameInput.Button.None);
+            main.SetIcon(HandReticle.IconType.Hand, 1f);
+        }
+    }
+}
