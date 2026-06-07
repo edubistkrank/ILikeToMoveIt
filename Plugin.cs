@@ -56,12 +56,6 @@ public sealed class Plugin : BaseUnityPlugin
         return constructable.techType == TechType.Locker || constructable.techType == TechType.SmallLocker;
     }
 
-    private static bool IsLockerEmpty(Constructable constructable)
-    {
-        StorageContainer storage = constructable.GetComponent<StorageContainer>();
-        return storage == null || storage.IsEmpty();
-    }
-
     private static IEnumerator BeginPlacingAsync(TechType techType)
     {
         if (techType == TechType.None)
@@ -114,9 +108,8 @@ public sealed class Plugin : BaseUnityPlugin
     {
         private static void Postfix(ref string __result)
         {
-            string alt = GameInput.FormatButton(GameInput.Button.AltTool, false);
             string left = GameInput.FormatButton(GameInput.Button.LeftHand, false);
-            string hint = $"{alt} + {left}: Mover locker";
+            string hint = $"Alt + {left}: Mover locker";
             __result = string.IsNullOrEmpty(__result)
                 ? hint
                 : $"{__result}\n{hint}";
@@ -146,12 +139,6 @@ public sealed class Plugin : BaseUnityPlugin
         if (!IsMovableLocker(constructable))
         {
             ErrorMessage.AddMessage("Mover solo funciona con floor locker y wall locker");
-            return true;
-        }
-
-        if (!IsLockerEmpty(constructable))
-        {
-            ErrorMessage.AddMessage("Solo puedes mover lockers vacíos");
             return true;
         }
 
@@ -272,14 +259,10 @@ public sealed class Plugin : BaseUnityPlugin
                 return;
             }
 
-            string alt = GameInput.FormatButton(GameInput.Button.AltTool, false);
             string left = GameInput.FormatButton(GameInput.Button.LeftHand, false);
-            string action = IsLockerEmpty(constructable)
-                ? "Mover locker"
-                : "Locker no vacío";
 
             HandReticle main = HandReticle.main;
-            main.SetText(HandReticle.TextType.HandSubscript, $"{alt} + {left}: {action}", false, GameInput.Button.None);
+            main.SetText(HandReticle.TextType.HandSubscript, $"Alt + {left}: Mover locker", false, GameInput.Button.None);
             main.SetIcon(HandReticle.IconType.Hand, 1f);
         }
     }
