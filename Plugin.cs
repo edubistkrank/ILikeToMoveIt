@@ -4,6 +4,7 @@ using HarmonyLib;
 using Nautilus.Handlers;
 using System.Collections;
 using UnityEngine;
+using UnityEngine.UI;
 
 namespace ILikeToMoveIt;
 
@@ -23,6 +24,10 @@ public sealed class Plugin : BaseUnityPlugin
     private static Quaternion moveOriginalRotation;
     private static GameObject moveOriginalObject;
 
+    private static Sprite _moveSprite;
+    private static Sprite[] _originalHandSprites;
+    private static bool _showMoveIcon;
+
     private void Awake()
     {
         Instance = this;
@@ -39,6 +44,133 @@ public sealed class Plugin : BaseUnityPlugin
         if (ReferenceEquals(Instance, this))
         {
             Instance = null;
+        }
+    }
+
+    private void LateUpdate()
+    {
+        if (_showMoveIcon)
+        {
+            EnsureMoveSprite();
+            ApplyMoveSpritesToHandIcon();
+        }
+        else
+        {
+            RestoreOriginalHandSprites();
+        }
+        _showMoveIcon = false;
+    }
+
+    private static void EnsureMoveSprite()
+    {
+        if (_moveSprite != null)
+        {
+            return;
+        }
+
+        System.Reflection.Assembly assembly = typeof(Plugin).Assembly;
+        using (System.IO.Stream stream = assembly.GetManifestResourceStream("ILikeToMoveIt.move.png"))
+        {
+            if (stream == null)
+            {
+                Log?.LogWarning("[ILikeToMoveIt] Embedded resource 'ILikeToMoveIt.move.png' not found.");
+                return;
+            }
+
+            byte[] bytes = new byte[stream.Length];
+            stream.Read(bytes, 0, bytes.Length);
+
+            Texture2D tex = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+            tex.filterMode = FilterMode.Bilinear;
+            if (!ImageConversion.LoadImage(tex, bytes))
+            {
+                Log?.LogWarning("[ILikeToMoveIt] move.png failed to decode.");
+                return;
+            }
+
+            _moveSprite = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f));
+            Log?.LogInfo("[ILikeToMoveIt] move.png loaded from embedded resource.");
+        }
+    }
+
+    private static void CacheOriginalHandSprites()
+    {
+        if (_originalHandSprites != null || HandReticle.main == null)
+        {
+            return;
+        }
+
+        foreach (uGUI_HandReticleIcon icon in HandReticle.main.icons)
+        {
+            if (icon.type != HandReticle.IconType.Hand)
+            {
+                continue;
+            }
+
+            _originalHandSprites = new Sprite[icon.graphic.Length];
+            for (int i = 0; i < icon.graphic.Length; i++)
+            {
+                if (icon.graphic[i] is Image img)
+                {
+                    _originalHandSprites[i] = img.sprite;
+                }
+            }
+
+            return;
+        }
+    }
+
+    private static void ApplyMoveSpritesToHandIcon()
+    {
+        if (_moveSprite == null || HandReticle.main == null)
+        {
+            return;
+        }
+
+        CacheOriginalHandSprites();
+
+        foreach (uGUI_HandReticleIcon icon in HandReticle.main.icons)
+        {
+            if (icon.type != HandReticle.IconType.Hand)
+            {
+                continue;
+            }
+
+            foreach (Graphic g in icon.graphic)
+            {
+                if (g is Image img)
+                {
+                    img.sprite = _moveSprite;
+                }
+            }
+
+            return;
+        }
+    }
+
+    private static void RestoreOriginalHandSprites()
+    {
+        if (_originalHandSprites == null || HandReticle.main == null)
+        {
+            return;
+        }
+
+        foreach (uGUI_HandReticleIcon icon in HandReticle.main.icons)
+        {
+            if (icon.type != HandReticle.IconType.Hand)
+            {
+                continue;
+            }
+
+            for (int i = 0; i < icon.graphic.Length && i < _originalHandSprites.Length; i++)
+            {
+                if (icon.graphic[i] is Image img && _originalHandSprites[i] != null)
+                {
+                    img.sprite = _originalHandSprites[i];
+                }
+            }
+
+            return;
         }
     }
 
@@ -317,6 +449,7 @@ public sealed class Plugin : BaseUnityPlugin
             HandReticle main = HandReticle.main;
             main.SetText(HandReticle.TextType.HandSubscript, $"Alt + {left}: {L("Mover locker", "Move locker")}", false, GameInput.Button.None);
             main.SetIcon(HandReticle.IconType.Hand, 1f);
+            _showMoveIcon = true;
         }
     }
 }
