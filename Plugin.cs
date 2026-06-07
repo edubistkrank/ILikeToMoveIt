@@ -315,7 +315,7 @@ public sealed class Plugin : BaseUnityPlugin
             string left = GameInput.FormatButton(GameInput.Button.LeftHand, false);
 
             HandReticle main = HandReticle.main;
-            main.SetText(HandReticle.TextType.HandSubscript, $"Alt + {left}: {L("Mover locker", "Move locker")}", false, GameInput.Button.None);
+            main.SetText(HandReticle.TextType.HandSubscript, $"{L("Mover", "Move")} (Alt + {left})", false, GameInput.Button.None);
             main.SetIcon(HandReticle.IconType.Hand, 1f);
         }
     }
