@@ -202,13 +202,27 @@ public sealed class Plugin : BaseUnityPlugin
                 return;
             }
 
+            GameObject originalObject = moveOriginalObject;
+            if (originalObject == null)
+            {
+                return;
+            }
+
             GameObject ghost = Builder.GetGhostModel();
-            Vector3 placement = ghost != null ? ghost.transform.position : moveOriginalPosition;
-            Constructable placed = FindPlacedUnconstructedLocker(moveTechType, placement);
+            Vector3 targetPosition = ghost != null ? ghost.transform.position : moveOriginalPosition;
+            Quaternion targetRotation = ghost != null ? ghost.transform.rotation : moveOriginalRotation;
+
+            Constructable placed = FindPlacedUnconstructedLocker(moveTechType, targetPosition);
             if (placed != null)
             {
-                placed.SetState(true, true);
+                targetPosition = placed.transform.position;
+                targetRotation = placed.transform.rotation;
+                Object.Destroy(placed.gameObject);
             }
+
+            originalObject.transform.position = targetPosition;
+            originalObject.transform.rotation = targetRotation;
+            originalObject.SetActive(true);
 
             moveSessionCommitted = true;
             Builder.ResetLast();
@@ -239,7 +253,6 @@ public sealed class Plugin : BaseUnityPlugin
 
             if (committed)
             {
-                Object.Destroy(originalObject);
                 return;
             }
 
