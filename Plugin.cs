@@ -49,6 +49,22 @@ public sealed class Plugin : BaseUnityPlugin
             || UnityEngine.Input.GetKey(UnityEngine.KeyCode.RightAlt);
     }
 
+    private static bool IsSpanishLanguage()
+    {
+        string current = Language.main?.GetCurrentLanguage();
+        if (!string.IsNullOrEmpty(current) && current.StartsWith("Spanish", System.StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return Application.systemLanguage == SystemLanguage.Spanish;
+    }
+
+    private static string L(string es, string en)
+    {
+        return IsSpanishLanguage() ? es : en;
+    }
+
     private static bool IsMovableLocker(Constructable constructable)
     {
         if (constructable == null || !constructable.constructed)
@@ -112,7 +128,7 @@ public sealed class Plugin : BaseUnityPlugin
         private static void Postfix(ref string __result)
         {
             string left = GameInput.FormatButton(GameInput.Button.LeftHand, false);
-            string hint = $"Alt + {left}: Mover locker";
+            string hint = $"Alt + {left}: {L("Mover locker", "Move locker")}";
             __result = string.IsNullOrEmpty(__result)
                 ? hint
                 : $"{__result}\n{hint}";
@@ -141,14 +157,14 @@ public sealed class Plugin : BaseUnityPlugin
 
         if (!IsMovableLocker(constructable))
         {
-            ErrorMessage.AddMessage("Mover solo funciona con floor locker y wall locker");
+            ErrorMessage.AddMessage(L("Mover solo funciona con floor locker y wall locker", "Move only works with floor locker and wall locker"));
             return true;
         }
 
         StorageContainer storage = constructable.GetComponent<StorageContainer>();
         if (Settings != null && Settings.PreventMoveIfNotEmpty && storage != null && !storage.IsEmpty())
         {
-            ErrorMessage.AddMessage("No se puede mover: tiene items");
+            ErrorMessage.AddMessage(L("No se puede mover: tiene items", "Cannot move: contains items"));
             return true;
         }
 
@@ -272,7 +288,7 @@ public sealed class Plugin : BaseUnityPlugin
             string left = GameInput.FormatButton(GameInput.Button.LeftHand, false);
 
             HandReticle main = HandReticle.main;
-            main.SetText(HandReticle.TextType.HandSubscript, $"Alt + {left}: Mover locker", false, GameInput.Button.None);
+            main.SetText(HandReticle.TextType.HandSubscript, $"Alt + {left}: {L("Mover locker", "Move locker")}", false, GameInput.Button.None);
             main.SetIcon(HandReticle.IconType.Hand, 1f);
         }
     }
