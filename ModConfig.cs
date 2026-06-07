@@ -6,6 +6,6 @@ namespace ILikeToMoveIt;
 [Menu("I Like To Move It")]
 internal sealed class ModConfig : ConfigFile
 {
-    [Toggle("No mover si tiene items / Don't move when contains items")]
+    [Toggle("Block moving non-empty lockers")]
     public bool PreventMoveIfNotEmpty = false;
 }
