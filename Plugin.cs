@@ -1,6 +1,7 @@
 using BepInEx;
 using BepInEx.Logging;
 using HarmonyLib;
+using Nautilus.Handlers;
 using System.Collections;
 using UnityEngine;
 
@@ -12,6 +13,7 @@ public sealed class Plugin : BaseUnityPlugin
     private Harmony harmony;
     internal static ManualLogSource Log { get; private set; }
     private static Plugin Instance { get; set; }
+    internal static ModConfig Settings { get; private set; }
 
     private static bool moveSessionActive;
     private static bool moveSessionCommitted;
@@ -25,6 +27,7 @@ public sealed class Plugin : BaseUnityPlugin
     {
         Instance = this;
         Log = Logger;
+        Settings = OptionsPanelHandler.RegisterModOptions<ModConfig>();
         harmony = new Harmony(PluginInfo.Guid);
         harmony.PatchAll();
         Log.LogInfo($"{PluginInfo.Name} {PluginInfo.Version} loaded.");
@@ -139,6 +142,13 @@ public sealed class Plugin : BaseUnityPlugin
         if (!IsMovableLocker(constructable))
         {
             ErrorMessage.AddMessage("Mover solo funciona con floor locker y wall locker");
+            return true;
+        }
+
+        StorageContainer storage = constructable.GetComponent<StorageContainer>();
+        if (Settings != null && Settings.PreventMoveIfNotEmpty && storage != null && !storage.IsEmpty())
+        {
+            ErrorMessage.AddMessage("No se puede mover: tiene items");
             return true;
         }
 
