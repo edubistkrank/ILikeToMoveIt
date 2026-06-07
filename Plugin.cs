@@ -65,14 +65,41 @@ public sealed class Plugin : BaseUnityPlugin
         return IsSpanishLanguage() ? es : en;
     }
 
-    private static bool IsMovableLocker(Constructable constructable)
+    private static bool IsMovableBySettings(Constructable constructable)
     {
         if (constructable == null || !constructable.constructed)
         {
             return false;
         }
 
-        return constructable.techType == TechType.Locker || constructable.techType == TechType.SmallLocker;
+        TechType techType = constructable.techType;
+        if (techType == TechType.Locker || techType == TechType.SmallLocker)
+        {
+            return true;
+        }
+
+        if (!CraftData.GetBuilderIndex(techType, out TechGroup group, out _, out _))
+        {
+            return false;
+        }
+
+        ModConfig settings = Settings;
+        if (settings == null)
+        {
+            return false;
+        }
+
+        switch (group)
+        {
+            case TechGroup.InteriorModules:
+                return settings.AllowInteriorModules;
+            case TechGroup.ExteriorModules:
+                return settings.AllowExteriorModules;
+            case TechGroup.Miscellaneous:
+                return settings.AllowMiscellaneous;
+            default:
+                return false;
+        }
     }
 
     private static IEnumerator BeginPlacingAsync(TechType techType)
@@ -155,9 +182,9 @@ public sealed class Plugin : BaseUnityPlugin
             return false;
         }
 
-        if (!IsMovableLocker(constructable))
+        if (!IsMovableBySettings(constructable))
         {
-            ErrorMessage.AddMessage(L("Mover solo funciona con floor locker y wall locker", "Move only works with floor locker and wall locker"));
+            ErrorMessage.AddMessage(L("Ese objeto no está habilitado para mover", "That object is not enabled for moving"));
             return true;
         }
 
@@ -280,7 +307,7 @@ public sealed class Plugin : BaseUnityPlugin
     {
         private static void Postfix(Constructable constructable)
         {
-            if (!IsMoveModifierHeld() || !IsMovableLocker(constructable))
+            if (!IsMoveModifierHeld() || !IsMovableBySettings(constructable))
             {
                 return;
             }

@@ -8,4 +8,13 @@ internal sealed class ModConfig : ConfigFile
 {
     [Toggle("Block moving non-empty lockers")]
     public bool PreventMoveIfNotEmpty = false;
+
+    [Toggle("Allow moving Interior Modules")]
+    public bool AllowInteriorModules = true;
+
+    [Toggle("Allow moving Exterior Modules")]
+    public bool AllowExteriorModules = true;
+
+    [Toggle("Allow moving Miscellaneous")]
+    public bool AllowMiscellaneous = true;
 }
