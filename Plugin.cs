@@ -241,6 +241,61 @@ public sealed class Plugin : BaseUnityPlugin
         return constructableBase != null && !constructableBase.constructed;
     }
 
+    private static BaseDeconstructable FindFaceDeconstructableForTarget(GameObject target, Constructable constructable)
+    {
+        BaseDeconstructable baseDecon = target?.GetComponent<BaseDeconstructable>()
+            ?? target?.GetComponentInParent<BaseDeconstructable>()
+            ?? target?.GetComponentInChildren<BaseDeconstructable>(true)
+            ?? constructable?.GetComponent<BaseDeconstructable>()
+            ?? constructable?.GetComponentInParent<BaseDeconstructable>()
+            ?? constructable?.GetComponentInChildren<BaseDeconstructable>(true);
+
+        if (!IsTransientFaceDeconstructable(baseDecon))
+        {
+            return baseDecon;
+        }
+
+        baseDecon = null;
+
+        if (constructable == null || !IsInteriorFacePieceTechType(constructable.techType))
+        {
+            return null;
+        }
+
+        Base constructableBase = constructable.GetComponentInParent<Base>();
+        float maxDistSqr = 9f;
+        Vector3 origin = constructable.transform.position;
+        BaseDeconstructable[] all = Object.FindObjectsOfType<BaseDeconstructable>();
+        for (int i = 0; i < all.Length; i++)
+        {
+            BaseDeconstructable candidate = all[i];
+            if (candidate == null || IsTransientFaceDeconstructable(candidate))
+            {
+                continue;
+            }
+
+            TechType recipe = GetBaseDeconstructableTechType(candidate);
+            if (recipe != constructable.techType)
+            {
+                continue;
+            }
+
+            if (constructableBase != null && candidate.GetComponentInParent<Base>() != constructableBase)
+            {
+                continue;
+            }
+
+            float distSqr = (candidate.transform.position - origin).sqrMagnitude;
+            if (distSqr <= maxDistSqr)
+            {
+                baseDecon = candidate;
+                maxDistSqr = distSqr;
+            }
+        }
+
+        return baseDecon;
+    }
+
     private static IEnumerator BeginPlacingAsync(TechType techType)
     {
         if (techType == TechType.None)
@@ -404,16 +459,8 @@ public sealed class Plugin : BaseUnityPlugin
         // PRIMERO: Intentar con BaseDeconstructable (face pieces como plantside)
         // Esto debe ser ANTES de Constructable porque plantside puede tener ambos
 
-        // Buscar TODOS los BaseDeconstructable cercanos para debug
-        BaseDeconstructable[] allBaseDeco = Object.FindObjectsOfType<BaseDeconstructable>();
-        Log.LogInfo($"=== TryMoveTargetedLocker: Total BD in scene: {allBaseDeco.Length}, Target: {target.name}, Distance: {distance} ===");
-
-        BaseDeconstructable baseDecon = target.GetComponentInParent<BaseDeconstructable>();
-        if (IsTransientFaceDeconstructable(baseDecon))
-        {
-            Log.LogInfo("GetComponentInParent<BaseDeconstructable>: transient ghost detected, ignoring");
-            baseDecon = null;
-        }
+        Constructable constructable = target.GetComponentInParent<Constructable>();
+        BaseDeconstructable baseDecon = FindFaceDeconstructableForTarget(target, constructable);
         Log.LogInfo($"GetComponentInParent<BaseDeconstructable>: {(baseDecon != null ? "FOUND (" + baseDecon.gameObject.name + ")" : "NOT FOUND")}");
 
         // Importante: no usar fallback al "BaseDeconstructable más cercano".
@@ -436,7 +483,6 @@ public sealed class Plugin : BaseUnityPlugin
         }
 
         // DESPUÉS: Intentar con Constructable (regular items, lockers)
-        Constructable constructable = target.GetComponentInParent<Constructable>();
         Log.LogInfo($"GetComponentInParent<Constructable>: {(constructable != null ? "FOUND (" + constructable.gameObject.name + ")" : "NOT FOUND")}");
 
         if (constructable != null && constructable.constructed && distance <= constructable.placeMaxDistance)
@@ -619,6 +665,10 @@ public sealed class Plugin : BaseUnityPlugin
             case TechType.BasePartition:
             case TechType.BasePartitionDoor:
             case TechType.BasePlanter:
+            case TechType.BaseFiltrationMachine:
+            case TechType.BaseWaterPark:
+            case TechType.BaseBioReactor:
+            case TechType.BaseNuclearReactor:
                 return true;
             default:
                 return false;
