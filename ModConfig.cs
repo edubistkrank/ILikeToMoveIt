@@ -12,6 +12,9 @@ internal sealed class ModConfig : ConfigFile
     [Toggle("Allow moving Interior Modules")]
     public bool AllowInteriorModules = true;
 
+    [Toggle("Allow moving Interior Pieces (base faces)")]
+    public bool AllowInteriorPieces = true;
+
     [Toggle("Allow moving Exterior Modules")]
     public bool AllowExteriorModules = true;
 

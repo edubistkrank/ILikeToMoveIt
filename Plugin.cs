@@ -20,7 +20,9 @@ public sealed class Plugin : BaseUnityPlugin
     private static bool moveSessionActive;
     private static bool moveSessionCommitted;
     private static bool moveSessionStartingPlacement;
-    private static bool moveSessionPlacementInitialized;
+    private static bool moveHasLastGhostTransform;
+    private static Vector3 moveLastGhostPosition;
+    private static Quaternion moveLastGhostRotation;
     private static TechType moveTechType = TechType.None;
     private static Vector3 moveOriginalPosition;
     private static Quaternion moveOriginalRotation;
@@ -272,7 +274,6 @@ public sealed class Plugin : BaseUnityPlugin
         }
 
         moveSessionStartingPlacement = false;
-        moveSessionPlacementInitialized = false;
     }
 
     private static Constructable FindPlacedUnconstructedLocker(TechType techType, Vector3 position)
@@ -305,7 +306,6 @@ public sealed class Plugin : BaseUnityPlugin
         moveSessionActive = false;
         moveSessionCommitted = false;
         moveSessionStartingPlacement = false;
-        moveSessionPlacementInitialized = false;
         moveTechType = TechType.None;
         moveOriginalPosition = default;
         moveOriginalRotation = default;
@@ -318,6 +318,9 @@ public sealed class Plugin : BaseUnityPlugin
         moveSessionOriginalFace = null;
         moveSessionOriginalFaceType = Base.FaceType.None;
         bypassResourceConsumption = false;
+        moveHasLastGhostTransform = false;
+        moveLastGhostPosition = default;
+        moveLastGhostRotation = default;
     }
 
     private static void InstantBuildMovedFacePiece()
@@ -356,6 +359,9 @@ public sealed class Plugin : BaseUnityPlugin
         moveSessionOriginalFace = null;
         moveSessionOriginalFaceType = Base.FaceType.None;
         bypassResourceConsumption = false;
+        moveHasLastGhostTransform = false;
+        moveLastGhostPosition = default;
+        moveLastGhostRotation = default;
     }
 
     [HarmonyPatch(typeof(BuilderTool), "GetCustomUseText")]
@@ -377,6 +383,14 @@ public sealed class Plugin : BaseUnityPlugin
         {
             SetMoveReticleIcon(false);
             return false;
+        }
+
+        // Limpieza defensiva: si por cualquier razón el builder quedó colocando algo previo,
+        // cerrarlo antes de iniciar un nuevo move para evitar arrastre de techType/ghost.
+        if (Builder.GetGhostModel() != null)
+        {
+            Builder.ResetLast();
+            Builder.End();
         }
 
         Targeting.AddToIgnoreList(Player.main.gameObject);
@@ -402,31 +416,8 @@ public sealed class Plugin : BaseUnityPlugin
         }
         Log.LogInfo($"GetComponentInParent<BaseDeconstructable>: {(baseDecon != null ? "FOUND (" + baseDecon.gameObject.name + ")" : "NOT FOUND")}");
 
-        // Si no encontramos con GetComponentInParent, buscar el más cercano
-        if (baseDecon == null && distance <= 11f)
-        {
-            float closestDist = float.MaxValue;
-            foreach (BaseDeconstructable bd in allBaseDeco)
-            {
-                if (IsTransientFaceDeconstructable(bd))
-                {
-                    continue;
-                }
-
-                float dist = Vector3.Distance(Player.main.transform.position, bd.transform.position);
-                TechType bdTech = GetBaseDeconstructableTechType(bd);
-                Log.LogInfo($"  Nearby BD: {bd.gameObject.name}, TechType: {bdTech}, Distance: {dist}");
-                if (dist < closestDist && dist <= 11f)
-                {
-                    closestDist = dist;
-                    baseDecon = bd;
-                }
-            }
-            if (baseDecon != null)
-            {
-                Log.LogInfo($"Found closest BaseDeconstructable: {baseDecon.gameObject.name}");
-            }
-        }
+        // Importante: no usar fallback al "BaseDeconstructable más cercano".
+        // Ese comportamiento causaba falsos positivos (p.ej. mover un locker y capturar una cara de base cercana).
 
         if (baseDecon != null && distance <= 11f)
         {
@@ -580,6 +571,18 @@ public sealed class Plugin : BaseUnityPlugin
 
     private static bool IsMovableBySettings(TechType techType)
     {
+        ModConfig settings = Settings;
+        if (settings == null)
+        {
+            return false;
+        }
+
+        // Piezas interiores de base (face-based) que transforman caras/adyacencias.
+        if (IsInteriorFacePieceTechType(techType))
+        {
+            return settings.AllowInteriorPieces;
+        }
+
         // Lockers siempre son movibles
         if (techType == TechType.Locker || techType == TechType.SmallLocker)
         {
@@ -587,12 +590,6 @@ public sealed class Plugin : BaseUnityPlugin
         }
 
         if (!CraftData.GetBuilderIndex(techType, out TechGroup group, out _, out _))
-        {
-            return false;
-        }
-
-        ModConfig settings = Settings;
-        if (settings == null)
         {
             return false;
         }
@@ -605,6 +602,24 @@ public sealed class Plugin : BaseUnityPlugin
                 return settings.AllowExteriorModules;
             case TechGroup.Miscellaneous:
                 return settings.AllowMiscellaneous;
+            default:
+                return false;
+        }
+    }
+
+    private static bool IsInteriorFacePieceTechType(TechType techType)
+    {
+        switch (techType)
+        {
+            case TechType.BaseWindow:
+            case TechType.BaseHatch:
+            case TechType.BaseLadder:
+            case TechType.BaseReinforcement:
+            case TechType.BaseBulkhead:
+            case TechType.BasePartition:
+            case TechType.BasePartitionDoor:
+            case TechType.BasePlanter:
+                return true;
             default:
                 return false;
         }
@@ -663,6 +678,22 @@ public sealed class Plugin : BaseUnityPlugin
             Builder.End();
         }
 
+        private static void Prefix()
+        {
+            if (!moveSessionActive)
+            {
+                return;
+            }
+
+            GameObject ghost = Builder.GetGhostModel();
+            if (ghost != null)
+            {
+                moveHasLastGhostTransform = true;
+                moveLastGhostPosition = ghost.transform.position;
+                moveLastGhostRotation = ghost.transform.rotation;
+            }
+        }
+
         private static void HandleRegularItemPlacement()
         {
             GameObject originalObject = moveOriginalObject;
@@ -672,8 +703,24 @@ public sealed class Plugin : BaseUnityPlugin
             }
 
             GameObject ghost = Builder.GetGhostModel();
-            Vector3 targetPosition = ghost != null ? ghost.transform.position : moveOriginalPosition;
-            Quaternion targetRotation = ghost != null ? ghost.transform.rotation : moveOriginalRotation;
+            Vector3 targetPosition;
+            Quaternion targetRotation;
+
+            if (ghost != null)
+            {
+                targetPosition = ghost.transform.position;
+                targetRotation = ghost.transform.rotation;
+            }
+            else if (moveHasLastGhostTransform)
+            {
+                targetPosition = moveLastGhostPosition;
+                targetRotation = moveLastGhostRotation;
+            }
+            else
+            {
+                targetPosition = moveOriginalPosition;
+                targetRotation = moveOriginalRotation;
+            }
 
             Constructable placed = FindPlacedUnconstructedLocker(moveTechType, targetPosition);
             if (placed != null)
@@ -695,12 +742,6 @@ public sealed class Plugin : BaseUnityPlugin
         private static void Postfix()
         {
             if (!moveSessionActive || moveSessionStartingPlacement)
-            {
-                return;
-            }
-
-            // Ignorar End transitorios durante/justo tras BeginAsync antes de entrar realmente en modo placement.
-            if (!moveSessionPlacementInitialized)
             {
                 return;
             }
@@ -746,18 +787,6 @@ public sealed class Plugin : BaseUnityPlugin
                 originalObject.transform.position = originalPosition;
                 originalObject.transform.rotation = originalRotation;
                 originalObject.SetActive(true);
-            }
-        }
-    }
-
-    [HarmonyPatch(typeof(Builder), "Update")]
-    private static class Builder_Update_MoveSession_Patch
-    {
-        private static void Postfix()
-        {
-            if (moveSessionActive && Builder.isPlacing)
-            {
-                moveSessionPlacementInitialized = true;
             }
         }
     }
