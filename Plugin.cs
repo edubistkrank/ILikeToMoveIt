@@ -20,6 +20,7 @@ public sealed class Plugin : BaseUnityPlugin
     private static bool moveSessionActive;
     private static bool moveSessionCommitted;
     private static bool moveSessionStartingPlacement;
+    private static bool moveSessionPlacementInitialized;
     private static TechType moveTechType = TechType.None;
     private static Vector3 moveOriginalPosition;
     private static Quaternion moveOriginalRotation;
@@ -271,6 +272,7 @@ public sealed class Plugin : BaseUnityPlugin
         }
 
         moveSessionStartingPlacement = false;
+        moveSessionPlacementInitialized = false;
     }
 
     private static Constructable FindPlacedUnconstructedLocker(TechType techType, Vector3 position)
@@ -303,6 +305,7 @@ public sealed class Plugin : BaseUnityPlugin
         moveSessionActive = false;
         moveSessionCommitted = false;
         moveSessionStartingPlacement = false;
+        moveSessionPlacementInitialized = false;
         moveTechType = TechType.None;
         moveOriginalPosition = default;
         moveOriginalRotation = default;
@@ -696,6 +699,12 @@ public sealed class Plugin : BaseUnityPlugin
                 return;
             }
 
+            // Ignorar End transitorios durante/justo tras BeginAsync antes de entrar realmente en modo placement.
+            if (!moveSessionPlacementInitialized)
+            {
+                return;
+            }
+
             bool committed = moveSessionCommitted;
             GameObject originalObject = moveOriginalObject;
             Vector3 originalPosition = moveOriginalPosition;
@@ -737,6 +746,18 @@ public sealed class Plugin : BaseUnityPlugin
                 originalObject.transform.position = originalPosition;
                 originalObject.transform.rotation = originalRotation;
                 originalObject.SetActive(true);
+            }
+        }
+    }
+
+    [HarmonyPatch(typeof(Builder), "Update")]
+    private static class Builder_Update_MoveSession_Patch
+    {
+        private static void Postfix()
+        {
+            if (moveSessionActive && Builder.isPlacing)
+            {
+                moveSessionPlacementInitialized = true;
             }
         }
     }
