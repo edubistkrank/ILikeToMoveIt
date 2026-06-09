@@ -325,8 +325,11 @@ public sealed class Plugin : BaseUnityPlugin
             {
                 Log.LogInfo($"BeginPlacingAsync: Destroying transient ConstructableBase '{moveSessionConstructableBase.gameObject.name}' before Builder.BeginAsync");
                 moveSessionConstructableBase.gameObject.SetActive(false);
-                Object.Destroy(moveSessionConstructableBase.gameObject);
-                moveSessionConstructableBase = null;
+                if (moveTechType != TechType.BaseWaterPark)
+                {
+                    Object.Destroy(moveSessionConstructableBase.gameObject);
+                    moveSessionConstructableBase = null;
+                }
                 yield return null;
             }
 
@@ -789,6 +792,12 @@ public sealed class Plugin : BaseUnityPlugin
                     FinalizeMovedWaterPark();
                 }
 
+                if (moveSessionConstructableBase != null)
+                {
+                    Object.Destroy(moveSessionConstructableBase.gameObject);
+                    moveSessionConstructableBase = null;
+                }
+
                 moveSessionCommitted = true;
                 moveSessionStartingPlacement = false;
                 Builder.ResetLast();
@@ -881,10 +890,27 @@ public sealed class Plugin : BaseUnityPlugin
             Base originalBase = moveSessionOriginalBase;
             Base.Face? originalFace = moveSessionOriginalFace;
             Base.FaceType originalFaceType = moveSessionOriginalFaceType;
-            ClearMoveSession();
+            TechType techType = moveTechType;
+            ConstructableBase transientConstructable = moveSessionConstructableBase;
+
+            // Snapshots del contenido del WaterPark por si se cancela y hay que recrearlo.
+            WaterPark waterParkSource = moveSessionWaterParkSource;
+            List<WaterParkItem> waterParkItems = new List<WaterParkItem>(moveSessionWaterParkItems);
+            List<Pickupable> waterParkPickupables = new List<Pickupable>(moveSessionWaterParkPickupables);
+            List<Pickupable> waterParkPlanterPickupables = new List<Pickupable>(moveSessionWaterParkPlanterPickupables);
+            bool hasWaterParkPayload = waterParkSource != null
+                || waterParkItems.Count > 0
+                || waterParkPickupables.Count > 0
+                || waterParkPlanterPickupables.Count > 0;
 
             if (committed)
             {
+                if (transientConstructable != null)
+                {
+                    Object.Destroy(transientConstructable.gameObject);
+                }
+
+                ClearMoveSession();
                 return;
             }
 
@@ -895,15 +921,53 @@ public sealed class Plugin : BaseUnityPlugin
                 {
                     try
                     {
-                        originalBase.SetFaceType(originalFace.Value, originalFaceType);
-                        originalBase.RebuildGeometry();
-                        Log.LogInfo($"Builder_End_Patch: restored canceled face piece {originalFaceType}");
+                        if (hasWaterParkPayload || techType == TechType.BaseWaterPark || originalFaceType == Base.FaceType.WaterPark)
+                        {
+                            if (transientConstructable != null)
+                            {
+                                transientConstructable.gameObject.SetActive(true);
+                                transientConstructable.SetState(true, true);
+
+                                WaterPark restoredAtOrigin = originalBase.GetModule(originalFace.Value) as WaterPark;
+                                if (restoredAtOrigin != null)
+                                {
+                                    ForceWaterParkVisible(restoredAtOrigin);
+                                    Base destinationBase = restoredAtOrigin.GetComponentInParent<Base>() ?? originalBase;
+                                    bool destroySource = waterParkSource != null && !ReferenceEquals(waterParkSource, restoredAtOrigin);
+                                    CompleteWaterParkTransfer(waterParkSource, restoredAtOrigin, originalBase, destinationBase, waterParkItems, waterParkPickupables, waterParkPlanterPickupables, false, destroySource);
+                                }
+                                else
+                                {
+                                    RestoreCanceledWaterPark(originalBase, originalFace.Value, waterParkSource, waterParkItems, waterParkPickupables, waterParkPlanterPickupables);
+                                }
+                            }
+                            else
+                            {
+                                originalBase.SetFaceType(originalFace.Value, originalFaceType);
+                                originalBase.RebuildGeometry();
+                                RestoreCanceledWaterPark(originalBase, originalFace.Value, waterParkSource, waterParkItems, waterParkPickupables, waterParkPlanterPickupables);
+                            }
+                        }
+                        else
+                        {
+                            originalBase.SetFaceType(originalFace.Value, originalFaceType);
+                            originalBase.RebuildGeometry();
+                            Log.LogInfo($"Builder_End_Patch: restored canceled face piece {originalFaceType}");
+                        }
                     }
                     catch (System.Exception ex)
                     {
                         Log.LogError($"Builder_End_Patch restore failed: {ex.Message}");
                     }
+
                 }
+
+                if (transientConstructable != null)
+                {
+                    Object.Destroy(transientConstructable.gameObject);
+                }
+
+                ClearMoveSession();
 
                 return;
             }
@@ -915,6 +979,13 @@ public sealed class Plugin : BaseUnityPlugin
                 originalObject.transform.rotation = originalRotation;
                 originalObject.SetActive(true);
             }
+
+            if (transientConstructable != null)
+            {
+                Object.Destroy(transientConstructable.gameObject);
+            }
+
+            ClearMoveSession();
         }
     }
 
@@ -1038,6 +1109,168 @@ public sealed class Plugin : BaseUnityPlugin
         oldBase?.RebuildGeometry();
     }
 
+    private static void RestoreCanceledWaterPark(Base originalBase, Base.Face originalFace, WaterPark source, List<WaterParkItem> itemsSnapshot, List<Pickupable> pickupablesSnapshot, List<Pickupable> planterPickupablesSnapshot)
+    {
+        if (originalBase == null)
+        {
+            return;
+        }
+
+        WaterPark destination = TryGetOrSpawnWaterParkAtFace(originalBase, originalFace, source);
+
+        if (destination == null)
+        {
+            if (Instance != null)
+            {
+                Instance.StartCoroutine(RestoreCanceledWaterParkDeferred(originalBase, originalFace, source, itemsSnapshot, pickupablesSnapshot, planterPickupablesSnapshot));
+            }
+            else
+            {
+                Log.LogWarning("RestoreCanceledWaterPark: failed to respawn source WaterPark on cancel");
+            }
+            return;
+        }
+
+        Base destinationBase = destination.GetComponentInParent<Base>() ?? originalBase;
+        ForceWaterParkVisible(destination);
+        Log.LogInfo($"RestoreCanceledWaterPark: destination={destination} base={destinationBase}");
+        CompleteWaterParkTransfer(source, destination, originalBase, destinationBase, itemsSnapshot, pickupablesSnapshot, planterPickupablesSnapshot, false, false);
+    }
+
+    private static IEnumerator RestoreCanceledWaterParkDeferred(Base originalBase, Base.Face originalFace, WaterPark source, List<WaterParkItem> itemsSnapshot, List<Pickupable> pickupablesSnapshot, List<Pickupable> planterPickupablesSnapshot)
+    {
+        const int maxFrames = 120;
+        for (int frame = 0; frame < maxFrames; frame++)
+        {
+            yield return null;
+            WaterPark destination = TryGetOrSpawnWaterParkAtFace(originalBase, originalFace, source);
+            if (destination != null)
+            {
+                Base destinationBase = destination.GetComponentInParent<Base>() ?? originalBase;
+                ForceWaterParkVisible(destination);
+                CompleteWaterParkTransfer(source, destination, originalBase, destinationBase, itemsSnapshot, pickupablesSnapshot, planterPickupablesSnapshot, false, false);
+                yield break;
+            }
+        }
+
+        Log.LogWarning("RestoreCanceledWaterParkDeferred: timeout waiting for canceled WaterPark respawn");
+    }
+
+    private static WaterPark TryGetOrSpawnWaterParkAtFace(Base originalBase, Base.Face originalFace, WaterPark source)
+    {
+        if (originalBase == null)
+        {
+            return null;
+        }
+
+        WaterPark destination = originalBase.GetModule(originalFace) as WaterPark;
+        if (IsWaterParkBoundToBaseFace(destination, originalBase, originalFace))
+        {
+            return destination;
+        }
+
+        // Fallback directo: crear módulo en la cara restaurada, probando ambos prefabs.
+        foreach (GameObject prefab in GetCandidateWaterParkPrefabs(source))
+        {
+            if (prefab == null)
+            {
+                continue;
+            }
+
+            GameObject spawned = originalBase.SpawnModule(prefab, originalFace);
+            WaterPark spawnedWaterPark = spawned != null
+                ? (spawned.GetComponent<WaterPark>() ?? spawned.GetComponentInChildren<WaterPark>(true))
+                : null;
+
+            if (IsWaterParkBoundToBaseFace(spawnedWaterPark, originalBase, originalFace))
+            {
+                return spawnedWaterPark;
+            }
+        }
+
+        destination = originalBase.GetModule(originalFace) as WaterPark;
+        if (IsWaterParkBoundToBaseFace(destination, originalBase, originalFace))
+        {
+            return destination;
+        }
+
+        WaterPark[] all = Object.FindObjectsOfType<WaterPark>();
+        for (int i = 0; i < all.Length; i++)
+        {
+            WaterPark candidate = all[i];
+            if (ReferenceEquals(candidate, source))
+            {
+                continue;
+            }
+
+            if (IsWaterParkBoundToBaseFace(candidate, originalBase, originalFace))
+            {
+                return candidate;
+            }
+        }
+
+        return null;
+    }
+
+    private static IEnumerable<GameObject> GetCandidateWaterParkPrefabs(WaterPark source)
+    {
+        System.Reflection.BindingFlags flags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static;
+        System.Reflection.FieldInfo largeField = typeof(WaterPark).GetField("largeRoomWaterParkPrefab", flags);
+        System.Reflection.FieldInfo roomField = typeof(WaterPark).GetField("roomWaterParkPrefab", flags);
+
+        GameObject largePrefab = largeField?.GetValue(null) as GameObject;
+        GameObject roomPrefab = roomField?.GetValue(null) as GameObject;
+
+        if (source is LargeRoomWaterPark)
+        {
+            if (largePrefab != null) yield return largePrefab;
+            if (roomPrefab != null) yield return roomPrefab;
+        }
+        else
+        {
+            if (roomPrefab != null) yield return roomPrefab;
+            if (largePrefab != null) yield return largePrefab;
+        }
+    }
+
+    private static void ForceWaterParkVisible(WaterPark waterPark)
+    {
+        if (waterPark == null)
+        {
+            return;
+        }
+
+        if (!waterPark.gameObject.activeSelf)
+        {
+            waterPark.gameObject.SetActive(true);
+        }
+
+        Renderer[] renderers = waterPark.GetComponentsInChildren<Renderer>(true);
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            if (renderers[i] != null)
+            {
+                renderers[i].enabled = true;
+            }
+        }
+    }
+
+    private static bool IsWaterParkBoundToBaseFace(WaterPark waterPark, Base expectedBase, Base.Face expectedFace)
+    {
+        if (waterPark == null || expectedBase == null)
+        {
+            return false;
+        }
+
+        Base actualBase = waterPark.GetComponentInParent<Base>();
+        if (!ReferenceEquals(actualBase, expectedBase))
+        {
+            return false;
+        }
+
+        return ReferenceEquals(expectedBase.GetModule(expectedFace), waterPark);
+    }
+
     private static bool TryFindWaterParkDestination(Vector3 targetPosition, out WaterPark destination, out Base destinationBase)
     {
         destination = moveSessionWaterParkDestination;
@@ -1067,7 +1300,7 @@ public sealed class Plugin : BaseUnityPlugin
         oldBase?.RebuildGeometry();
     }
 
-    private static void CompleteWaterParkTransfer(WaterPark source, WaterPark destination, Base oldBase, Base destinationBase, List<WaterParkItem> itemsSnapshot, List<Pickupable> pickupablesSnapshot, List<Pickupable> planterPickupablesSnapshot)
+    private static void CompleteWaterParkTransfer(WaterPark source, WaterPark destination, Base oldBase, Base destinationBase, List<WaterParkItem> itemsSnapshot, List<Pickupable> pickupablesSnapshot, List<Pickupable> planterPickupablesSnapshot, bool rebuildBases = true, bool destroySource = true)
     {
         bool restored = false;
         if (pickupablesSnapshot != null && pickupablesSnapshot.Count > 0)
@@ -1117,15 +1350,18 @@ public sealed class Plugin : BaseUnityPlugin
         }
 
         Base newBase = destinationBase ?? destination.GetComponentInParent<Base>();
-        if (source != null && !ReferenceEquals(source, destination))
+        if (destroySource && source != null && !ReferenceEquals(source, destination))
         {
             Object.Destroy(source.gameObject);
         }
 
-        oldBase?.RebuildGeometry();
-        if (newBase != null && !ReferenceEquals(newBase, oldBase))
+        if (rebuildBases)
         {
-            newBase.RebuildGeometry();
+            oldBase?.RebuildGeometry();
+            if (newBase != null && !ReferenceEquals(newBase, oldBase))
+            {
+                newBase.RebuildGeometry();
+            }
         }
     }
 
@@ -1512,12 +1748,4 @@ public sealed class Plugin : BaseUnityPlugin
         }
     }
 
-    [HarmonyPatch(typeof(Builder), "CreateGhost", new[] { typeof(TechType) })]
-    private static class Builder_CreateGhost_Patch
-    {
-        private static bool Prefix(TechType techType, ref GameObject __result)
-        {
-            return true;
-        }
-    }
 }
