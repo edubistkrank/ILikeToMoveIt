@@ -582,14 +582,39 @@ public sealed class Plugin : BaseUnityPlugin
             if (moveSessionOriginalBase != null && moveSessionOriginalFace != null)
             {
                 waterPark = moveSessionOriginalBase.GetModule(moveSessionOriginalFace.Value) as WaterPark;
+                Log.LogInfo($"WaterPark: GetModule result={waterPark}");
+            }
+            else
+            {
+                Log.LogWarning($"WaterPark: originalBase={moveSessionOriginalBase}, originalFace={moveSessionOriginalFace} — skipping GetModule");
             }
 
             if (waterPark == null)
             {
                 waterPark = baseDecon.GetComponentInParent<WaterPark>() ?? baseDecon.GetComponentInChildren<WaterPark>(true);
+                Log.LogInfo($"WaterPark: fallback GetComponent result={waterPark}");
+            }
+
+            if (waterPark == null)
+            {
+                WaterPark[] allParks = Object.FindObjectsOfType<WaterPark>();
+                float bestDist = 25f;
+                Vector3 origin = baseDecon.transform.position;
+                foreach (WaterPark wp in allParks)
+                {
+                    if (wp == null) continue;
+                    float d = (wp.transform.position - origin).sqrMagnitude;
+                    if (d < bestDist)
+                    {
+                        bestDist = d;
+                        waterPark = wp;
+                    }
+                }
+                Log.LogInfo($"WaterPark: scene search result={waterPark} dist={bestDist}");
             }
 
             moveSessionWaterParkSource = waterPark;
+            Log.LogInfo($"WaterPark: source captured={waterPark != null}, planter={waterPark?.planter}");
 
             if (waterPark != null && Settings != null && Settings.PreventMoveWaterParkIfNotEmpty && waterPark.HasItemsInside())
             {
@@ -599,7 +624,9 @@ public sealed class Plugin : BaseUnityPlugin
             }
 
             CaptureWaterParkItems(waterPark);
+            Log.LogInfo($"WaterPark: fauna captured={moveSessionWaterParkPickupables.Count}");
             CaptureWaterParkPlanterItems(waterPark);
+            Log.LogInfo($"WaterPark: flora captured={moveSessionWaterParkPlanterPickupables.Count}");
             moveSessionWaterParkDestination = null;
             ParkCapturedWaterParkPickupables();
             ParkCapturedWaterParkPlanterPickupables();
@@ -758,6 +785,7 @@ public sealed class Plugin : BaseUnityPlugin
                 InstantBuildMovedFacePiece();
                 if (moveTechType == TechType.BaseWaterPark)
                 {
+                    Log.LogInfo($"WaterPark: FinalizeMovedWaterPark, destination={moveSessionWaterParkDestination}, fauna={moveSessionWaterParkPickupables.Count}, flora={moveSessionWaterParkPlanterPickupables.Count}");
                     FinalizeMovedWaterPark();
                 }
 
@@ -1137,11 +1165,45 @@ public sealed class Plugin : BaseUnityPlugin
     private static void CaptureWaterParkPlanterItems(WaterPark waterPark)
     {
         moveSessionWaterParkPlanterPickupables.Clear();
-        Planter planter = waterPark != null ? waterPark.planter : null;
-        StorageContainer storageContainer = planter != null ? planter.storageContainer : null;
-        ItemsContainer container = storageContainer != null ? storageContainer.container : null;
+        if (waterPark == null)
+        {
+            return;
+        }
+
+        // WaterPark normal: campo planter directo
+        if (waterPark.planter != null)
+        {
+            EnsurePlanterReady(waterPark.planter);
+            CaptureFromPlanter(waterPark.planter);
+        }
+
+        // LargeRoomWaterPark: usa LargeRoomWaterParkPlanter con leftPlanter y rightPlanter
+        System.Reflection.FieldInfo plantersField = waterPark.GetType().GetField("planters",
+            System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        object plantersObj = plantersField?.GetValue(waterPark);
+        if (plantersObj != null)
+        {
+            System.Type plantersType = plantersObj.GetType();
+            foreach (string name in new[] { "leftPlanter", "rightPlanter" })
+            {
+                System.Reflection.FieldInfo f = plantersType.GetField(name,
+                    System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                if (f?.GetValue(plantersObj) is Planter p)
+                {
+                    EnsurePlanterReady(p);
+                    CaptureFromPlanter(p);
+                }
+            }
+        }
+    }
+
+    private static void CaptureFromPlanter(Planter planter)
+    {
+        StorageContainer storageContainer = planter.storageContainer;
+        ItemsContainer container = storageContainer?.container;
         if (container == null)
         {
+            CaptureWaterParkPlanterItemsFromSlots(planter);
             return;
         }
 
@@ -1156,15 +1218,69 @@ public sealed class Plugin : BaseUnityPlugin
 
         for (int i = 0; i < snapshot.Count; i++)
         {
-            InventoryItem inventoryItem = snapshot[i];
-            Pickupable pickupable = inventoryItem.item;
-            if (pickupable == null)
+            Pickupable pickupable = snapshot[i].item;
+            if (pickupable == null || moveSessionWaterParkPlanterPickupables.Contains(pickupable))
             {
                 continue;
             }
 
-            container.RemoveItem(pickupable, true);
+            Plantable plantable = pickupable.GetComponent<Plantable>();
+            if (plantable != null)
+            {
+                planter.RemoveItem(plantable);
+            }
+            else
+            {
+                container.RemoveItem(pickupable, true);
+            }
+
             moveSessionWaterParkPlanterPickupables.Add(pickupable);
+        }
+    }
+
+    private static void CaptureWaterParkPlanterItemsFromSlots(Planter planter)
+    {
+        if (planter == null)
+        {
+            return;
+        }
+
+        CaptureWaterParkPlanterItemsFromSlotArray(planter, "bigPlantSlots");
+        CaptureWaterParkPlanterItemsFromSlotArray(planter, "smallPlantSlots");
+    }
+
+    private static void CaptureWaterParkPlanterItemsFromSlotArray(Planter planter, string fieldName)
+    {
+        try
+        {
+            System.Reflection.FieldInfo slotsField = typeof(Planter).GetField(fieldName, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            if (!(slotsField?.GetValue(planter) is System.Array slots))
+            {
+                return;
+            }
+
+            for (int i = 0; i < slots.Length; i++)
+            {
+                object slot = slots.GetValue(i);
+                if (slot == null)
+                {
+                    continue;
+                }
+
+                System.Reflection.FieldInfo plantableField = slot.GetType().GetField("plantable", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                Plantable plantable = plantableField?.GetValue(slot) as Plantable;
+                Pickupable pickupable = plantable != null ? plantable.GetComponent<Pickupable>() : null;
+                if (pickupable == null || moveSessionWaterParkPlanterPickupables.Contains(pickupable))
+                {
+                    continue;
+                }
+
+                planter.RemoveItem(plantable);
+                moveSessionWaterParkPlanterPickupables.Add(pickupable);
+            }
+        }
+        catch
+        {
         }
     }
 
@@ -1233,34 +1349,114 @@ public sealed class Plugin : BaseUnityPlugin
         const int maxFrames = 120;
         for (int frame = 0; frame < maxFrames && pending.Count > 0; frame++)
         {
-            Planter planter = destination.planter;
-            StorageContainer storageContainer = planter != null ? planter.storageContainer : null;
-            ItemsContainer container = storageContainer != null ? storageContainer.container : null;
-            if (container != null)
+            List<Planter> planters = GetWaterParkPlanters(destination);
+            foreach (Planter planter in planters)
             {
-                for (int i = pending.Count - 1; i >= 0; i--)
+                EnsurePlanterReady(planter);
+            }
+
+            for (int i = pending.Count - 1; i >= 0; i--)
+            {
+                Pickupable pickupable = pending[i];
+                if (pickupable == null)
                 {
-                    Pickupable pickupable = pending[i];
-                    if (pickupable == null)
+                    pending.RemoveAt(i);
+                    continue;
+                }
+
+                // La semilla/planta dentro de un planter es un item de inventario invisible:
+                // su Pickupable.gameObject permanece INACTIVO y el Planter spawnea su propio
+                // modelo visible en el slot (plantable.Spawn). Si lo activamos, el modelo
+                // original queda flotando alineado en el storageRoot (duplicado visual).
+                if (pickupable.gameObject.activeSelf)
+                {
+                    pickupable.gameObject.SetActive(false);
+                }
+
+                pickupable.ResetTechTypeOverride();
+
+                bool added = false;
+                foreach (Planter planter in planters)
+                {
+                    ItemsContainer container = planter.storageContainer?.container;
+                    if (container == null)
                     {
-                        pending.RemoveAt(i);
                         continue;
                     }
 
-                    if (!pickupable.gameObject.activeSelf)
+                    InventoryItem result = container.AddItem(pickupable);
+                    if (result != null)
                     {
-                        pickupable.gameObject.SetActive(true);
+                        added = true;
+                        break;
                     }
+                }
 
-                    InventoryItem added = container.AddItem(pickupable);
-                    if (added != null)
-                    {
-                        pending.RemoveAt(i);
-                    }
+                if (added)
+                {
+                    pending.RemoveAt(i);
                 }
             }
 
             yield return null;
+        }
+    }
+
+    private static List<Planter> GetWaterParkPlanters(WaterPark waterPark)
+    {
+        List<Planter> result = new List<Planter>();
+        if (waterPark == null)
+        {
+            return result;
+        }
+
+        if (waterPark.planter != null)
+        {
+            result.Add(waterPark.planter);
+        }
+
+        System.Reflection.FieldInfo plantersField = waterPark.GetType().GetField("planters",
+            System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        object plantersObj = plantersField?.GetValue(waterPark);
+        if (plantersObj != null)
+        {
+            System.Type t = plantersObj.GetType();
+            foreach (string name in new[] { "leftPlanter", "rightPlanter" })
+            {
+                System.Reflection.FieldInfo f = t.GetField(name,
+                    System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                if (f?.GetValue(plantersObj) is Planter p)
+                {
+                    result.Add(p);
+                }
+            }
+        }
+
+        return result;
+    }
+
+    private static void EnsurePlanterReady(Planter planter)
+    {
+        if (planter == null)
+        {
+            return;
+        }
+
+        try
+        {
+            if (planter.storageContainer != null && !planter.storageContainer.enabled)
+            {
+                planter.storageContainer.enabled = true;
+            }
+
+            System.Reflection.MethodInfo initialize = typeof(Planter).GetMethod("Initialize", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            initialize?.Invoke(planter, null);
+
+            System.Reflection.MethodInfo subscribe = typeof(Planter).GetMethod("Subscribe", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            subscribe?.Invoke(planter, new object[] { true });
+        }
+        catch
+        {
         }
     }
 
