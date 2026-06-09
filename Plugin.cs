@@ -39,6 +39,12 @@ public sealed class Plugin : BaseUnityPlugin
     private static Base moveSessionOriginalBase;
     private static Base.Face? moveSessionOriginalFace;
     private static Base.FaceType moveSessionOriginalFaceType;
+    private static WaterPark moveSessionWaterParkSource;
+    private static WaterPark moveSessionWaterParkDestination;
+    private static readonly List<WaterParkItem> moveSessionWaterParkItems = new List<WaterParkItem>();
+    private static readonly List<Pickupable> moveSessionWaterParkPickupables = new List<Pickupable>();
+    private static readonly List<Pickupable> moveSessionWaterParkPlanterPickupables = new List<Pickupable>();
+    private static Transform moveSessionParkingRoot;
     private static bool bypassResourceConsumption;
     private static readonly System.Reflection.FieldInfo baseDeconstructableRecipeField = typeof(BaseDeconstructable).GetField(
         "recipe",
@@ -372,6 +378,11 @@ public sealed class Plugin : BaseUnityPlugin
         moveSessionOriginalBase = null;
         moveSessionOriginalFace = null;
         moveSessionOriginalFaceType = Base.FaceType.None;
+        moveSessionWaterParkSource = null;
+        moveSessionWaterParkDestination = null;
+        moveSessionWaterParkItems.Clear();
+        moveSessionWaterParkPickupables.Clear();
+        moveSessionWaterParkPlanterPickupables.Clear();
         bypassResourceConsumption = false;
         moveHasLastGhostTransform = false;
         moveLastGhostPosition = default;
@@ -413,6 +424,11 @@ public sealed class Plugin : BaseUnityPlugin
         moveSessionOriginalBase = null;
         moveSessionOriginalFace = null;
         moveSessionOriginalFaceType = Base.FaceType.None;
+        moveSessionWaterParkSource = null;
+        moveSessionWaterParkDestination = null;
+        moveSessionWaterParkItems.Clear();
+        moveSessionWaterParkPickupables.Clear();
+        moveSessionWaterParkPlanterPickupables.Clear();
         bypassResourceConsumption = false;
         moveHasLastGhostTransform = false;
         moveLastGhostPosition = default;
@@ -559,6 +575,35 @@ public sealed class Plugin : BaseUnityPlugin
         moveSessionOriginalFace = baseDecon.face;
         moveSessionOriginalFaceType = baseDecon.faceType;
         bypassResourceConsumption = true;
+
+        if (recipeType == TechType.BaseWaterPark)
+        {
+            WaterPark waterPark = null;
+            if (moveSessionOriginalBase != null && moveSessionOriginalFace != null)
+            {
+                waterPark = moveSessionOriginalBase.GetModule(moveSessionOriginalFace.Value) as WaterPark;
+            }
+
+            if (waterPark == null)
+            {
+                waterPark = baseDecon.GetComponentInParent<WaterPark>() ?? baseDecon.GetComponentInChildren<WaterPark>(true);
+            }
+
+            moveSessionWaterParkSource = waterPark;
+
+            if (waterPark != null && Settings != null && Settings.PreventMoveWaterParkIfNotEmpty && waterPark.HasItemsInside())
+            {
+                ErrorMessage.AddMessage(L("No se puede mover: tiene items", "Cannot move: contains items"));
+                ClearMoveSession();
+                return true;
+            }
+
+            CaptureWaterParkItems(waterPark);
+            CaptureWaterParkPlanterItems(waterPark);
+            moveSessionWaterParkDestination = null;
+            ParkCapturedWaterParkPickupables();
+            ParkCapturedWaterParkPlanterPickupables();
+        }
 
         Log.LogInfo($"TryMoveBaseFacePiece: Calling Builder.ResetLast()");
         Builder.ResetLast();
@@ -711,6 +756,10 @@ public sealed class Plugin : BaseUnityPlugin
             {
                 Log.LogInfo($"Builder_TryPlace_Patch: Face piece placed by vanilla, marking committed");
                 InstantBuildMovedFacePiece();
+                if (moveTechType == TechType.BaseWaterPark)
+                {
+                    FinalizeMovedWaterPark();
+                }
 
                 moveSessionCommitted = true;
                 moveSessionStartingPlacement = false;
@@ -927,6 +976,341 @@ public sealed class Plugin : BaseUnityPlugin
                 return true;
             }
 
+            __result = true;
+            return false;
+        }
+    }
+
+    private static void FinalizeMovedWaterPark()
+    {
+        WaterPark source = moveSessionWaterParkSource;
+        Base oldBase = moveSessionOriginalBase;
+        Vector3 targetPosition = moveHasLastGhostTransform ? moveLastGhostPosition : moveOriginalPosition;
+        List<WaterParkItem> itemsSnapshot = new List<WaterParkItem>(moveSessionWaterParkItems);
+        List<Pickupable> pickupablesSnapshot = new List<Pickupable>(moveSessionWaterParkPickupables);
+        List<Pickupable> planterPickupablesSnapshot = new List<Pickupable>(moveSessionWaterParkPlanterPickupables);
+
+        if (TryFindWaterParkDestination(targetPosition, out WaterPark destination, out Base destinationBase))
+        {
+            CompleteWaterParkTransfer(source, destination, oldBase, destinationBase, itemsSnapshot, pickupablesSnapshot, planterPickupablesSnapshot);
+            return;
+        }
+
+        if (Instance != null)
+        {
+            Instance.StartCoroutine(FinalizeMovedWaterParkDelayed(source, oldBase, targetPosition, itemsSnapshot, pickupablesSnapshot, planterPickupablesSnapshot));
+            return;
+        }
+
+        if (source != null)
+        {
+            Object.Destroy(source.gameObject);
+        }
+
+        oldBase?.RebuildGeometry();
+    }
+
+    private static bool TryFindWaterParkDestination(Vector3 targetPosition, out WaterPark destination, out Base destinationBase)
+    {
+        destination = moveSessionWaterParkDestination;
+        destinationBase = destination != null ? destination.GetComponentInParent<Base>() : null;
+        return destination != null;
+    }
+
+    private static IEnumerator FinalizeMovedWaterParkDelayed(WaterPark source, Base oldBase, Vector3 targetPosition, List<WaterParkItem> itemsSnapshot, List<Pickupable> pickupablesSnapshot, List<Pickupable> planterPickupablesSnapshot)
+    {
+        const int maxFrames = 90;
+        for (int frame = 0; frame < maxFrames; frame++)
+        {
+            yield return null;
+
+            if (TryFindWaterParkDestination(targetPosition, out WaterPark destination, out Base destinationBase))
+            {
+                CompleteWaterParkTransfer(source, destination, oldBase, destinationBase, itemsSnapshot, pickupablesSnapshot, planterPickupablesSnapshot);
+                yield break;
+            }
+        }
+
+        if (source != null)
+        {
+            Object.Destroy(source.gameObject);
+        }
+
+        oldBase?.RebuildGeometry();
+    }
+
+    private static void CompleteWaterParkTransfer(WaterPark source, WaterPark destination, Base oldBase, Base destinationBase, List<WaterParkItem> itemsSnapshot, List<Pickupable> pickupablesSnapshot, List<Pickupable> planterPickupablesSnapshot)
+    {
+        bool restored = false;
+        if (pickupablesSnapshot != null && pickupablesSnapshot.Count > 0)
+        {
+            for (int i = 0; i < pickupablesSnapshot.Count; i++)
+            {
+                Pickupable pickupable = pickupablesSnapshot[i];
+                if (pickupable == null)
+                {
+                    continue;
+                }
+
+                if (!pickupable.gameObject.activeSelf)
+                {
+                    pickupable.gameObject.SetActive(true);
+                }
+
+                destination.AddItem(pickupable);
+                Vector3 clampedPosition = pickupable.transform.position;
+                destination.EnsurePointIsInside(ref clampedPosition);
+                pickupable.transform.position = clampedPosition;
+                restored = true;
+            }
+        }
+
+        if (planterPickupablesSnapshot != null && planterPickupablesSnapshot.Count > 0 && Instance != null)
+        {
+            Instance.StartCoroutine(RestoreWaterParkPlanterItemsDeferred(destination, planterPickupablesSnapshot));
+        }
+
+        if (!restored && itemsSnapshot != null && itemsSnapshot.Count > 0)
+        {
+            for (int i = 0; i < itemsSnapshot.Count; i++)
+            {
+                WaterParkItem item = itemsSnapshot[i];
+                if (item != null && item.GetWaterPark() != destination)
+                {
+                    item.SetWaterPark(destination);
+                    restored = true;
+                }
+            }
+        }
+
+        if (!restored && source != null && source.HasItemsInside())
+        {
+            WaterPark.TransferValue(source, destination);
+        }
+
+        Base newBase = destinationBase ?? destination.GetComponentInParent<Base>();
+        if (source != null && !ReferenceEquals(source, destination))
+        {
+            Object.Destroy(source.gameObject);
+        }
+
+        oldBase?.RebuildGeometry();
+        if (newBase != null && !ReferenceEquals(newBase, oldBase))
+        {
+            newBase.RebuildGeometry();
+        }
+    }
+
+    private static void CaptureWaterParkItems(WaterPark waterPark)
+    {
+        moveSessionWaterParkItems.Clear();
+        moveSessionWaterParkPickupables.Clear();
+        if (waterPark == null)
+        {
+            return;
+        }
+
+        System.Reflection.FieldInfo itemsField = typeof(WaterPark).GetField("items", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        if (itemsField == null)
+        {
+            return;
+        }
+
+        if (itemsField.GetValue(waterPark.rootWaterPark) is List<WaterParkItem> items)
+        {
+            for (int i = 0; i < items.Count; i++)
+            {
+                WaterParkItem item = items[i];
+                if (item != null)
+                {
+                    moveSessionWaterParkItems.Add(item);
+                    Pickupable pickupable = item.GetComponent<Pickupable>();
+                    if (pickupable != null)
+                    {
+                        moveSessionWaterParkPickupables.Add(pickupable);
+                    }
+                }
+            }
+        }
+    }
+
+    private static void CaptureWaterParkPlanterItems(WaterPark waterPark)
+    {
+        moveSessionWaterParkPlanterPickupables.Clear();
+        Planter planter = waterPark != null ? waterPark.planter : null;
+        StorageContainer storageContainer = planter != null ? planter.storageContainer : null;
+        ItemsContainer container = storageContainer != null ? storageContainer.container : null;
+        if (container == null)
+        {
+            return;
+        }
+
+        List<InventoryItem> snapshot = new List<InventoryItem>();
+        foreach (InventoryItem inventoryItem in container)
+        {
+            if (inventoryItem != null)
+            {
+                snapshot.Add(inventoryItem);
+            }
+        }
+
+        for (int i = 0; i < snapshot.Count; i++)
+        {
+            InventoryItem inventoryItem = snapshot[i];
+            Pickupable pickupable = inventoryItem.item;
+            if (pickupable == null)
+            {
+                continue;
+            }
+
+            container.RemoveItem(pickupable, true);
+            moveSessionWaterParkPlanterPickupables.Add(pickupable);
+        }
+    }
+
+    private static void ParkCapturedWaterParkPickupables()
+    {
+        if (moveSessionWaterParkPickupables.Count == 0)
+        {
+            return;
+        }
+
+        Transform parkingRoot = GetOrCreateMoveSessionParkingRoot();
+        for (int i = 0; i < moveSessionWaterParkPickupables.Count; i++)
+        {
+            Pickupable pickupable = moveSessionWaterParkPickupables[i];
+            if (pickupable == null)
+            {
+                continue;
+            }
+
+            WaterParkItem item = pickupable.GetComponent<WaterParkItem>();
+            if (item != null)
+            {
+                item.SetWaterPark(null);
+            }
+
+            pickupable.transform.SetParent(parkingRoot, true);
+            if (pickupable.gameObject.activeSelf)
+            {
+                pickupable.gameObject.SetActive(false);
+            }
+        }
+    }
+
+    private static void ParkCapturedWaterParkPlanterPickupables()
+    {
+        if (moveSessionWaterParkPlanterPickupables.Count == 0)
+        {
+            return;
+        }
+
+        Transform parkingRoot = GetOrCreateMoveSessionParkingRoot();
+        for (int i = 0; i < moveSessionWaterParkPlanterPickupables.Count; i++)
+        {
+            Pickupable pickupable = moveSessionWaterParkPlanterPickupables[i];
+            if (pickupable == null)
+            {
+                continue;
+            }
+
+            pickupable.transform.SetParent(parkingRoot, true);
+            if (pickupable.gameObject.activeSelf)
+            {
+                pickupable.gameObject.SetActive(false);
+            }
+        }
+    }
+
+    private static IEnumerator RestoreWaterParkPlanterItemsDeferred(WaterPark destination, List<Pickupable> planterPickupablesSnapshot)
+    {
+        if (destination == null || planterPickupablesSnapshot == null || planterPickupablesSnapshot.Count == 0)
+        {
+            yield break;
+        }
+
+        List<Pickupable> pending = new List<Pickupable>(planterPickupablesSnapshot);
+        const int maxFrames = 120;
+        for (int frame = 0; frame < maxFrames && pending.Count > 0; frame++)
+        {
+            Planter planter = destination.planter;
+            StorageContainer storageContainer = planter != null ? planter.storageContainer : null;
+            ItemsContainer container = storageContainer != null ? storageContainer.container : null;
+            if (container != null)
+            {
+                for (int i = pending.Count - 1; i >= 0; i--)
+                {
+                    Pickupable pickupable = pending[i];
+                    if (pickupable == null)
+                    {
+                        pending.RemoveAt(i);
+                        continue;
+                    }
+
+                    if (!pickupable.gameObject.activeSelf)
+                    {
+                        pickupable.gameObject.SetActive(true);
+                    }
+
+                    InventoryItem added = container.AddItem(pickupable);
+                    if (added != null)
+                    {
+                        pending.RemoveAt(i);
+                    }
+                }
+            }
+
+            yield return null;
+        }
+    }
+
+    private static Transform GetOrCreateMoveSessionParkingRoot()
+    {
+        if (moveSessionParkingRoot != null)
+        {
+            return moveSessionParkingRoot;
+        }
+
+        GameObject root = new GameObject("ILikeToMoveIt_WaterParkParkingRoot");
+        root.hideFlags = HideFlags.HideAndDontSave;
+        moveSessionParkingRoot = root.transform;
+        return moveSessionParkingRoot;
+    }
+
+    [HarmonyPatch(typeof(Base), "SpawnModule", new[] { typeof(GameObject), typeof(Base.Face) })]
+    private static class Base_SpawnModule_Patch
+    {
+        private static void Postfix(GameObject __result)
+        {
+            if (!moveSessionActive || moveTechType != TechType.BaseWaterPark || __result == null)
+            {
+                return;
+            }
+
+            WaterPark waterPark = __result.GetComponent<WaterPark>() ?? __result.GetComponentInChildren<WaterPark>(true);
+            if (waterPark != null)
+            {
+                moveSessionWaterParkDestination = waterPark;
+            }
+        }
+    }
+
+    [HarmonyPatch(typeof(WaterParkGeometry), "CanDeconstruct")]
+    private static class WaterParkGeometry_CanDeconstruct_Patch
+    {
+        private static bool Prefix(ref bool __result, ref string reason)
+        {
+            if (!moveSessionActive || moveBackend != MoveBackend.Face || moveTechType != TechType.BaseWaterPark)
+            {
+                return true;
+            }
+
+            if (Settings != null && Settings.PreventMoveWaterParkIfNotEmpty)
+            {
+                return true;
+            }
+
+            reason = null;
             __result = true;
             return false;
         }

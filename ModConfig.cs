@@ -9,6 +9,9 @@ internal sealed class ModConfig : ConfigFile
     [Toggle("Block moving non-empty lockers")]
     public bool PreventMoveIfNotEmpty = false;
 
+    [Toggle("Block moving non-empty WaterParks")]
+    public bool PreventMoveWaterParkIfNotEmpty = false;
+
     [Toggle("Allow moving Interior Modules")]
     public bool AllowInteriorModules = true;
 
