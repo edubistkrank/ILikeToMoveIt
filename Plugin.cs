@@ -41,6 +41,7 @@ public sealed class Plugin : BaseUnityPlugin
     private static Base.FaceType moveSessionOriginalFaceType;
     private static WaterPark moveSessionWaterParkSource;
     private static WaterPark moveSessionWaterParkDestination;
+    private static bool moveSessionWaterParkUseVanillaFauna;
     private static readonly List<WaterParkItem> moveSessionWaterParkItems = new List<WaterParkItem>();
     private static readonly List<Pickupable> moveSessionWaterParkPickupables = new List<Pickupable>();
     private static readonly List<Pickupable> moveSessionWaterParkPlanterPickupables = new List<Pickupable>();
@@ -60,6 +61,7 @@ public sealed class Plugin : BaseUnityPlugin
         harmony = new Harmony(PluginInfo.Guid);
         LoadMoveReticleSprite();
         harmony.PatchAll();
+        ApplyIsCellUnderConstructionPatch(harmony);
         StartCoroutine(WarmupReticleMovePath());
         Log.LogInfo($"{PluginInfo.Name} {PluginInfo.Version} loaded.");
     }
@@ -383,6 +385,7 @@ public sealed class Plugin : BaseUnityPlugin
         moveSessionOriginalFaceType = Base.FaceType.None;
         moveSessionWaterParkSource = null;
         moveSessionWaterParkDestination = null;
+        moveSessionWaterParkUseVanillaFauna = false;
         moveSessionWaterParkItems.Clear();
         moveSessionWaterParkPickupables.Clear();
         moveSessionWaterParkPlanterPickupables.Clear();
@@ -429,6 +432,7 @@ public sealed class Plugin : BaseUnityPlugin
         moveSessionOriginalFaceType = Base.FaceType.None;
         moveSessionWaterParkSource = null;
         moveSessionWaterParkDestination = null;
+        moveSessionWaterParkUseVanillaFauna = false;
         moveSessionWaterParkItems.Clear();
         moveSessionWaterParkPickupables.Clear();
         moveSessionWaterParkPlanterPickupables.Clear();
@@ -619,6 +623,9 @@ public sealed class Plugin : BaseUnityPlugin
             moveSessionWaterParkSource = waterPark;
             Log.LogInfo($"WaterPark: source captured={waterPark != null}, planter={waterPark?.planter}");
 
+            moveSessionWaterParkUseVanillaFauna = waterPark != null && waterPark.IsConnected();
+            Log.LogInfo($"WaterPark: vanilla fauna handling={(moveSessionWaterParkUseVanillaFauna ? "enabled (stack/connected)" : "disabled")}");
+
             if (waterPark != null && Settings != null && Settings.PreventMoveWaterParkIfNotEmpty && waterPark.HasItemsInside())
             {
                 ErrorMessage.AddMessage(L("No se puede mover: tiene items", "Cannot move: contains items"));
@@ -626,12 +633,25 @@ public sealed class Plugin : BaseUnityPlugin
                 return true;
             }
 
-            CaptureWaterParkItems(waterPark);
-            Log.LogInfo($"WaterPark: fauna captured={moveSessionWaterParkPickupables.Count}");
+            if (!moveSessionWaterParkUseVanillaFauna)
+            {
+                CaptureWaterParkItems(waterPark);
+                Log.LogInfo($"WaterPark: fauna captured={moveSessionWaterParkPickupables.Count}");
+            }
+            else
+            {
+                moveSessionWaterParkItems.Clear();
+                moveSessionWaterParkPickupables.Clear();
+                Log.LogInfo("WaterPark: skipping fauna capture for connected stack");
+            }
+
             CaptureWaterParkPlanterItems(waterPark);
             Log.LogInfo($"WaterPark: flora captured={moveSessionWaterParkPlanterPickupables.Count}");
             moveSessionWaterParkDestination = null;
-            ParkCapturedWaterParkPickupables();
+            if (!moveSessionWaterParkUseVanillaFauna)
+            {
+                ParkCapturedWaterParkPickupables();
+            }
             ParkCapturedWaterParkPlanterPickupables();
         }
 
@@ -1344,7 +1364,7 @@ public sealed class Plugin : BaseUnityPlugin
             }
         }
 
-        if (!restored && source != null && source.HasItemsInside())
+        if (!moveSessionWaterParkUseVanillaFauna && !restored && source != null && source.HasItemsInside())
         {
             WaterPark.TransferValue(source, destination);
         }
@@ -1746,6 +1766,53 @@ public sealed class Plugin : BaseUnityPlugin
             __result = true;
             return false;
         }
+    }
+
+    private static void ApplyIsCellUnderConstructionPatch(Harmony harmonyInstance)
+    {
+        try
+        {
+            System.Reflection.MethodInfo target = typeof(Base).GetMethod(
+                "IsCellUnderConstruction",
+                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+            if (target == null)
+            {
+                Log.LogWarning("ApplyIsCellUnderConstructionPatch: IsCellUnderConstruction not found");
+                return;
+            }
+
+            System.Reflection.MethodInfo postfix = typeof(Plugin).GetMethod(
+                nameof(IsCellUnderConstruction_Postfix),
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+            if (postfix == null)
+            {
+                Log.LogWarning("ApplyIsCellUnderConstructionPatch: postfix method not found");
+                return;
+            }
+
+            harmonyInstance.Patch(target, postfix: new HarmonyMethod(postfix));
+        }
+        catch (System.Exception ex)
+        {
+            Log.LogError($"ApplyIsCellUnderConstructionPatch failed: {ex.Message}");
+        }
+    }
+
+    private static void IsCellUnderConstruction_Postfix(Base __instance, ref bool __result)
+    {
+        if (!moveSessionActive || moveBackend != MoveBackend.Face || moveTechType != TechType.BaseWaterPark)
+        {
+            return;
+        }
+
+        if (!ReferenceEquals(__instance, moveSessionOriginalBase))
+        {
+            return;
+        }
+
+        // Solo durante recolocacion de WaterPark: ignorar el estado "under construction"
+        // transitorio que bloquea recolocar dentro de la misma LargeRoom.
+        __result = false;
     }
 
 }
