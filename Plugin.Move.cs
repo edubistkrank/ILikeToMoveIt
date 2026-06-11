@@ -51,23 +51,6 @@ public sealed partial class Plugin
 
         if (constructable != null && constructable.constructed && distance <= constructable.placeMaxDistance)
         {
-            if (constructable.techType == TechType.BaseBioReactor
-                && Settings != null
-                && Settings.PreventMoveBioReactorIfNotEmpty
-                && ReactorHasContentOnRoot(constructable.gameObject, TechType.BaseBioReactor))
-            {
-                ErrorMessage.AddMessage(L("No se puede mover: BioReactor con combustible", "Cannot move: BioReactor contains fuel"));
-                return true;
-            }
-
-            if (constructable.techType == TechType.BaseNuclearReactor
-                && Settings != null
-                && Settings.PreventMoveNuclearReactorIfNotEmpty
-                && ReactorHasContentOnRoot(constructable.gameObject, TechType.BaseNuclearReactor))
-            {
-                ErrorMessage.AddMessage(L("No se puede mover: NuclearReactor con barras", "Cannot move: NuclearReactor contains rods"));
-                return true;
-            }
 
             if (!IsMovableBySettings(constructable))
             {
@@ -247,26 +230,6 @@ public sealed partial class Plugin
                 {
                     reactorRoot = fallback.gameObject;
                 }
-            }
-
-            if (recipeType == TechType.BaseBioReactor
-                && Settings != null
-                && Settings.PreventMoveBioReactorIfNotEmpty
-                && ReactorHasContentOnRoot(reactorRoot, recipeType))
-            {
-                ErrorMessage.AddMessage(L("No se puede mover: BioReactor con combustible", "Cannot move: BioReactor contains fuel"));
-                ClearMoveSession();
-                return true;
-            }
-
-            if (recipeType == TechType.BaseNuclearReactor
-                && Settings != null
-                && Settings.PreventMoveNuclearReactorIfNotEmpty
-                && ReactorHasContentOnRoot(reactorRoot, recipeType))
-            {
-                ErrorMessage.AddMessage(L("No se puede mover: NuclearReactor con barras", "Cannot move: NuclearReactor contains rods"));
-                ClearMoveSession();
-                return true;
             }
 
             if (!CaptureReactorItemsFromRoot(reactorRoot, recipeType))

@@ -44,7 +44,7 @@ public sealed partial class Plugin
 
         baseDecon = null;
 
-        if (constructable == null || !IsInteriorFacePieceTechType(constructable.techType))
+        if (constructable == null || (!IsInteriorPieceTechType(constructable.techType) && !IsBasePieceTechType(constructable.techType)))
         {
             return null;
         }
@@ -286,14 +286,29 @@ public sealed partial class Plugin
             return false;
         }
 
-        if (IsInteriorFacePieceTechType(techType))
+        if (IsBasePieceTechType(techType))
+        {
+            return settings.AllowBasePieces;
+        }
+
+        if (IsInteriorPieceTechType(techType))
         {
             return settings.AllowInteriorPieces;
         }
 
-        if (techType == TechType.Locker || techType == TechType.SmallLocker)
+        if (IsInteriorModuleTechType(techType))
         {
-            return true;
+            return settings.AllowInteriorModules;
+        }
+
+        if (IsExternalModuleTechType(techType))
+        {
+            return settings.AllowExternalModules;
+        }
+
+        if (IsMiscellaneousItemTechType(techType))
+        {
+            return settings.AllowMiscellaneousItems;
         }
 
         if (!CraftData.GetBuilderIndex(techType, out TechGroup group, out _, out _))
@@ -306,30 +321,117 @@ public sealed partial class Plugin
             case TechGroup.InteriorModules:
                 return settings.AllowInteriorModules;
             case TechGroup.ExteriorModules:
-                return settings.AllowExteriorModules;
+                return settings.AllowExternalModules;
             case TechGroup.Miscellaneous:
-                return settings.AllowMiscellaneous;
+                return settings.AllowMiscellaneousItems;
             default:
                 return false;
         }
     }
 
-    private static bool IsInteriorFacePieceTechType(TechType techType)
+    private static bool IsBasePieceTechType(TechType techType)
     {
         switch (techType)
         {
-            case TechType.BaseWindow:
             case TechType.BaseHatch:
-            case TechType.BaseLadder:
+            case TechType.BaseWindow:
             case TechType.BaseReinforcement:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private static bool IsInteriorPieceTechType(TechType techType)
+    {
+        switch (techType)
+        {
+            case TechType.BaseLadder:
             case TechType.BaseBulkhead:
             case TechType.BasePartition:
             case TechType.BasePartitionDoor:
-            case TechType.BasePlanter:
             case TechType.BaseFiltrationMachine:
             case TechType.BaseWaterPark:
             case TechType.BaseBioReactor:
             case TechType.BaseNuclearReactor:
+            case TechType.BaseUpgradeConsole:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private static bool IsExternalModuleTechType(TechType techType)
+    {
+        switch (techType)
+        {
+            case TechType.SolarPanel:
+            case TechType.ThermalPlant:
+            case TechType.PowerTransmitter:
+            case TechType.Spotlight:
+            case TechType.BasePipeConnector:
+            case TechType.PipeSurfaceFloater:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private static bool IsInteriorModuleTechType(TechType techType)
+    {
+        switch (techType)
+        {
+            case TechType.Fabricator:
+            case TechType.Radio:
+            case TechType.MedicalCabinet:
+            case TechType.SmallLocker:
+            case TechType.Locker:
+            case TechType.BatteryCharger:
+            case TechType.PowerCellCharger:
+            case TechType.Aquarium:
+            case TechType.Workbench:
+            case TechType.PlanterPot:
+            case TechType.PlanterPot2:
+            case TechType.PlanterPot3:
+            case TechType.PlanterBox:
+            case TechType.PlanterShelf:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private static bool IsMiscellaneousItemTechType(TechType techType)
+    {
+        switch (techType)
+        {
+            case TechType.Bench:
+            case TechType.Bed1:
+            case TechType.Bed2:
+            case TechType.NarrowBed:
+            case TechType.StarshipDesk:
+            case TechType.StarshipChair:
+            case TechType.StarshipChair2:
+            case TechType.StarshipChair3:
+            case TechType.Sign:
+            case TechType.PictureFrame:
+            case TechType.BarTable:
+            case TechType.Trashcans:
+            case TechType.LabTrashcan:
+            case TechType.VendingMachine:
+            case TechType.CoffeeVendingMachine:
+            case TechType.LabCounter:
+            case TechType.BasePlanter:
+            case TechType.SingleWallShelf:
+            case TechType.WallShelves:
+            case TechType.JackSepticEye:
+            case TechType.DioramaHullPlate:
+            case TechType.MarkiplierHullPlate:
+            case TechType.MuyskermHullPlate:
+            case TechType.LordMinionHullPlate:
+            case TechType.JackSepticEyeHullPlate:
+            case TechType.IGPHullPlate:
+            case TechType.GilathissHullPlate:
                 return true;
             default:
                 return false;
