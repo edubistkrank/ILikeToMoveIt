@@ -6,11 +6,17 @@ namespace ILikeToMoveIt;
 [Menu("I Like To Move It")]
 internal sealed class ModConfig : ConfigFile
 {
-    [Toggle("Block moving non-empty lockers")]
+    [Toggle("Block non-empty Lockers")]
     public bool PreventMoveIfNotEmpty = false;
 
-    [Toggle("Block moving non-empty WaterParks")]
+    [Toggle("Block non-empty Alien Containment")]
     public bool PreventMoveWaterParkIfNotEmpty = false;
+
+    [Toggle("Block non-empty BioReactor")]
+    public bool PreventMoveBioReactorIfNotEmpty = false;
+
+    [Toggle("Block non-empty NuclearReactor")]
+    public bool PreventMoveNuclearReactorIfNotEmpty = false;
 
     [Toggle("Allow moving Miscellaneous")]
     public bool AllowMiscellaneous = true;

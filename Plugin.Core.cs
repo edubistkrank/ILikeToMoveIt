@@ -1,5 +1,6 @@
 using HarmonyLib;
 using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace ILikeToMoveIt;
@@ -164,6 +165,17 @@ public sealed partial class Plugin
         moveSessionWaterParkSource = null;
         moveSessionWaterParkDestination = null;
         moveSessionWaterParkUseVanillaFauna = false;
+        if (moveSessionReactorPickupables != null)
+        {
+            moveSessionReactorPickupables.Clear();
+        }
+
+        moveSessionReactorTechType = TechType.None;
+        moveSessionReactorSourceRoot = null;
+        moveSessionReactorDestinationRoot = null;
+        moveSessionReactorStateCaptured = false;
+        moveSessionReactorPower = 0f;
+        moveSessionReactorToConsume = 0f;
         moveSessionWaterParkItems.Clear();
         moveSessionWaterParkPickupables.Clear();
         moveSessionWaterParkPlanterPickupables.Clear();
@@ -210,6 +222,21 @@ public sealed partial class Plugin
         moveSessionWaterParkSource = null;
         moveSessionWaterParkDestination = null;
         moveSessionWaterParkUseVanillaFauna = false;
+        if (moveSessionReactorPickupables == null)
+        {
+            moveSessionReactorPickupables = new List<Pickupable>();
+        }
+        else
+        {
+            moveSessionReactorPickupables.Clear();
+        }
+
+        moveSessionReactorTechType = TechType.None;
+        moveSessionReactorSourceRoot = null;
+        moveSessionReactorDestinationRoot = null;
+        moveSessionReactorStateCaptured = false;
+        moveSessionReactorPower = 0f;
+        moveSessionReactorToConsume = 0f;
         moveSessionWaterParkItems.Clear();
         moveSessionWaterParkPickupables.Clear();
         moveSessionWaterParkPlanterPickupables.Clear();

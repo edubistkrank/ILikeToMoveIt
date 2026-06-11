@@ -42,6 +42,13 @@ public sealed partial class Plugin : BaseUnityPlugin
     private static WaterPark moveSessionWaterParkSource;
     private static WaterPark moveSessionWaterParkDestination;
     private static bool moveSessionWaterParkUseVanillaFauna;
+    private static List<Pickupable> moveSessionReactorPickupables;
+    private static TechType moveSessionReactorTechType = TechType.None;
+    private static GameObject moveSessionReactorSourceRoot;
+    private static GameObject moveSessionReactorDestinationRoot;
+    private static bool moveSessionReactorStateCaptured;
+    private static float moveSessionReactorPower;
+    private static float moveSessionReactorToConsume;
     private static readonly List<WaterParkItem> moveSessionWaterParkItems = new List<WaterParkItem>();
     private static readonly List<Pickupable> moveSessionWaterParkPickupables = new List<Pickupable>();
     private static readonly List<Pickupable> moveSessionWaterParkPlanterPickupables = new List<Pickupable>();
