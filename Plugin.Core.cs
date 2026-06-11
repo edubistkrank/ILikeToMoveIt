@@ -173,6 +173,13 @@ public sealed partial class Plugin
         moveSessionReactorTechType = TechType.None;
         moveSessionReactorSourceRoot = null;
         moveSessionReactorDestinationRoot = null;
+        if (moveSessionFiltrationPickupables != null)
+        {
+            moveSessionFiltrationPickupables.Clear();
+        }
+
+        moveSessionFiltrationSourceRoot = null;
+        moveSessionFiltrationDestinationRoot = null;
         moveSessionReactorStateCaptured = false;
         moveSessionReactorPower = 0f;
         moveSessionReactorToConsume = 0f;
@@ -234,6 +241,17 @@ public sealed partial class Plugin
         moveSessionReactorTechType = TechType.None;
         moveSessionReactorSourceRoot = null;
         moveSessionReactorDestinationRoot = null;
+        if (moveSessionFiltrationPickupables == null)
+        {
+            moveSessionFiltrationPickupables = new List<Pickupable>();
+        }
+        else
+        {
+            moveSessionFiltrationPickupables.Clear();
+        }
+
+        moveSessionFiltrationSourceRoot = null;
+        moveSessionFiltrationDestinationRoot = null;
         moveSessionReactorStateCaptured = false;
         moveSessionReactorPower = 0f;
         moveSessionReactorToConsume = 0f;

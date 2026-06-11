@@ -241,6 +241,32 @@ public sealed partial class Plugin
             moveSessionReactorSourceRoot = reactorRoot;
             moveSessionReactorDestinationRoot = null;
         }
+        else if (recipeType == TechType.BaseFiltrationMachine)
+        {
+            GameObject filtrationRoot = null;
+            if (moveSessionOriginalBase != null && moveSessionOriginalFace != null)
+            {
+                IBaseModule module = moveSessionOriginalBase.GetModule(moveSessionOriginalFace.Value);
+                Component moduleComponent = module as Component;
+                if (moduleComponent != null)
+                {
+                    filtrationRoot = moduleComponent.gameObject;
+                }
+            }
+
+            if (filtrationRoot == null)
+            {
+                Constructable fallback = baseDecon.GetComponentInParent<Constructable>();
+                if (fallback != null)
+                {
+                    filtrationRoot = fallback.gameObject;
+                }
+            }
+
+            CaptureFiltrationItemsFromRoot(filtrationRoot);
+            moveSessionFiltrationSourceRoot = filtrationRoot;
+            moveSessionFiltrationDestinationRoot = null;
+        }
 
         Log.LogInfo("TryMoveBaseFacePiece: Calling Builder.ResetLast()");
         Builder.ResetLast();
@@ -328,6 +354,17 @@ public sealed partial class Plugin
                     }
                 }
 
+                if (moveTechType == TechType.BaseFiltrationMachine
+                    && moveSessionFiltrationPickupables != null
+                    && moveSessionFiltrationPickupables.Count > 0)
+                {
+                    GameObject destinationFiltrationRoot = moveSessionFiltrationDestinationRoot;
+                    if (destinationFiltrationRoot != null)
+                    {
+                        QueueFiltrationRestore(destinationFiltrationRoot, moveSessionFiltrationPickupables);
+                    }
+                }
+
                 if (moveTechType == TechType.BaseWaterPark)
                 {
                     Log.LogInfo($"WaterPark: FinalizeMovedWaterPark, destination={moveSessionWaterParkDestination}, fauna={moveSessionWaterParkPickupables.Count}, flora={moveSessionWaterParkPlanterPickupables.Count}");
@@ -411,6 +448,11 @@ public sealed partial class Plugin
             originalObject.transform.rotation = targetRotation;
             originalObject.SetActive(true);
 
+            if (moveTechType == TechType.BatteryCharger || moveTechType == TechType.PowerCellCharger)
+            {
+                QueueChargerVisualRefresh(originalObject);
+            }
+
             if ((moveTechType == TechType.BaseBioReactor || moveTechType == TechType.BaseNuclearReactor)
                 && moveSessionReactorPickupables != null
                 && moveSessionReactorPickupables.Count > 0)
@@ -450,6 +492,9 @@ public sealed partial class Plugin
             List<Pickupable> reactorPickupables = moveSessionReactorPickupables != null
                 ? new List<Pickupable>(moveSessionReactorPickupables)
                 : new List<Pickupable>();
+            List<Pickupable> filtrationPickupables = moveSessionFiltrationPickupables != null
+                ? new List<Pickupable>(moveSessionFiltrationPickupables)
+                : new List<Pickupable>();
             bool hasWaterParkPayload = waterParkSource != null
                 || waterParkItems.Count > 0
                 || waterParkPickupables.Count > 0
@@ -463,6 +508,14 @@ public sealed partial class Plugin
                     && !ReferenceEquals(reactorSourceRoot, reactorDestinationRoot))
                 {
                     Object.Destroy(reactorSourceRoot);
+                }
+
+                if (backend == MoveBackend.Face
+                    && techType == TechType.BaseFiltrationMachine
+                    && moveSessionFiltrationSourceRoot != null
+                    && !ReferenceEquals(moveSessionFiltrationSourceRoot, moveSessionFiltrationDestinationRoot))
+                {
+                    Object.Destroy(moveSessionFiltrationSourceRoot);
                 }
 
                 if (transientConstructable != null)
@@ -519,6 +572,13 @@ public sealed partial class Plugin
                                 GameObject originRoot = GetModuleRootFromBaseFace(originalBase, originalFace.Value);
                                 QueueReactorRestore(originRoot, techType, reactorPickupables);
                             }
+
+                            if (techType == TechType.BaseFiltrationMachine
+                                && filtrationPickupables.Count > 0)
+                            {
+                                GameObject originFiltrationRoot = GetModuleRootFromBaseFace(originalBase, originalFace.Value);
+                                QueueFiltrationRestore(originFiltrationRoot, filtrationPickupables);
+                            }
                         }
                     }
                     catch (System.Exception ex)
@@ -547,6 +607,11 @@ public sealed partial class Plugin
                     && moveSessionReactorPickupables.Count > 0)
                 {
                     QueueReactorRestore(originalObject, techType, moveSessionReactorPickupables);
+                }
+
+                if (techType == TechType.BatteryCharger || techType == TechType.PowerCellCharger)
+                {
+                    QueueChargerVisualRefresh(originalObject);
                 }
             }
 
@@ -647,5 +712,284 @@ public sealed partial class Plugin
             __result = true;
             return false;
         }
+    }
+
+    [HarmonyPatch(typeof(Base), "SpawnModule", new[] { typeof(GameObject), typeof(Base.Face) })]
+    private static class Base_SpawnModule_FiltrationTrack_Patch
+    {
+        private static void Postfix(GameObject __result)
+        {
+            if (!moveSessionActive || moveBackend != MoveBackend.Face || __result == null)
+            {
+                return;
+            }
+
+            if (moveTechType != TechType.BaseFiltrationMachine)
+            {
+                return;
+            }
+
+            moveSessionFiltrationDestinationRoot = __result;
+        }
+    }
+
+    [HarmonyPatch(typeof(BaseFiltrationMachineGeometry), "CanDeconstruct")]
+    private static class BaseFiltrationMachineGeometry_CanDeconstruct_Patch
+    {
+        private static bool Prefix(ref bool __result, ref string reason)
+        {
+            if (!moveSessionActive || moveBackend != MoveBackend.Face || moveTechType != TechType.BaseFiltrationMachine)
+            {
+                return true;
+            }
+
+            reason = null;
+            __result = true;
+            return false;
+        }
+    }
+
+    private static void CaptureFiltrationItemsFromRoot(GameObject filtrationRoot)
+    {
+        if (moveSessionFiltrationPickupables == null)
+        {
+            moveSessionFiltrationPickupables = new List<Pickupable>();
+        }
+        else
+        {
+            moveSessionFiltrationPickupables.Clear();
+        }
+
+        if (filtrationRoot == null)
+        {
+            return;
+        }
+
+        StorageContainer storage = filtrationRoot.GetComponentInChildren<StorageContainer>(true)
+            ?? filtrationRoot.GetComponentInParent<StorageContainer>();
+        ItemsContainer container = storage?.container;
+        if (container == null)
+        {
+            return;
+        }
+
+        List<Pickupable> snapshot = new List<Pickupable>();
+        foreach (InventoryItem inventoryItem in container)
+        {
+            if (inventoryItem?.item != null)
+            {
+                snapshot.Add(inventoryItem.item);
+            }
+        }
+
+        for (int i = 0; i < snapshot.Count; i++)
+        {
+            Pickupable pickupable = snapshot[i];
+            if (pickupable == null)
+            {
+                continue;
+            }
+
+            if (container.RemoveItem(pickupable, true))
+            {
+                moveSessionFiltrationPickupables.Add(pickupable);
+            }
+        }
+
+        Transform parkingRoot = GetOrCreateMoveSessionParkingRoot();
+        for (int i = 0; i < moveSessionFiltrationPickupables.Count; i++)
+        {
+            Pickupable pickupable = moveSessionFiltrationPickupables[i];
+            if (pickupable == null)
+            {
+                continue;
+            }
+
+            pickupable.transform.SetParent(parkingRoot, true);
+            if (pickupable.gameObject.activeSelf)
+            {
+                pickupable.gameObject.SetActive(false);
+            }
+        }
+    }
+
+    private static void QueueFiltrationRestore(GameObject filtrationRoot, List<Pickupable> pickupables)
+    {
+        if (filtrationRoot == null || pickupables == null || pickupables.Count == 0)
+        {
+            return;
+        }
+
+        List<Pickupable> pending = new List<Pickupable>(pickupables);
+        if (TryRestoreFiltrationItemsIntoRoot(filtrationRoot, pending))
+        {
+            return;
+        }
+
+        if (Instance != null)
+        {
+            Instance.StartCoroutine(RestoreFiltrationItemsIntoRootDeferred(filtrationRoot, pending));
+        }
+    }
+
+    private static IEnumerator RestoreFiltrationItemsIntoRootDeferred(GameObject filtrationRoot, List<Pickupable> pending)
+    {
+        if (filtrationRoot == null || pending == null || pending.Count == 0)
+        {
+            yield break;
+        }
+
+        const int maxFrames = 120;
+        for (int frame = 0; frame < maxFrames && pending.Count > 0; frame++)
+        {
+            TryRestoreFiltrationItemsIntoRoot(filtrationRoot, pending);
+            yield return null;
+        }
+    }
+
+    private static bool TryRestoreFiltrationItemsIntoRoot(GameObject filtrationRoot, List<Pickupable> pending)
+    {
+        if (filtrationRoot == null || pending == null || pending.Count == 0)
+        {
+            return true;
+        }
+
+        StorageContainer storage = filtrationRoot.GetComponentInChildren<StorageContainer>(true)
+            ?? filtrationRoot.GetComponentInParent<StorageContainer>();
+        ItemsContainer container = storage?.container;
+        if (container == null)
+        {
+            return false;
+        }
+
+        for (int i = pending.Count - 1; i >= 0; i--)
+        {
+            Pickupable pickupable = pending[i];
+            if (pickupable == null)
+            {
+                pending.RemoveAt(i);
+                continue;
+            }
+
+            if (pickupable.gameObject.activeSelf)
+            {
+                pickupable.gameObject.SetActive(false);
+            }
+
+            pickupable.ResetTechTypeOverride();
+            InventoryItem added = new InventoryItem(pickupable);
+            container.UnsafeAdd(added);
+            if (added.container == container)
+            {
+                pending.RemoveAt(i);
+            }
+        }
+
+        MarkFiltrationGeometryDirty(filtrationRoot);
+        return pending.Count == 0;
+    }
+
+    private static void MarkFiltrationGeometryDirty(GameObject filtrationRoot)
+    {
+        if (filtrationRoot == null)
+        {
+            return;
+        }
+
+        BaseFiltrationMachineGeometry geometry = filtrationRoot.GetComponentInChildren<BaseFiltrationMachineGeometry>(true)
+            ?? filtrationRoot.GetComponentInParent<BaseFiltrationMachineGeometry>();
+        geometry?.SetDirty();
+    }
+
+    [HarmonyPatch(typeof(Constructable), "SetState", new[] { typeof(bool), typeof(bool) })]
+    private static class Constructable_SetState_ChargerVisuals_Patch
+    {
+        private static void Postfix(Constructable __instance, bool value)
+        {
+            if (!value || __instance == null)
+            {
+                return;
+            }
+
+            if (__instance.techType != TechType.BatteryCharger && __instance.techType != TechType.PowerCellCharger)
+            {
+                return;
+            }
+
+            if (Instance != null)
+            {
+                Instance.StartCoroutine(RefreshChargerVisualsDeferred(__instance.gameObject));
+            }
+        }
+    }
+
+    private static IEnumerator RefreshChargerVisualsDeferred(GameObject chargerRoot)
+    {
+        if (chargerRoot == null)
+        {
+            yield break;
+        }
+
+        const int maxFrames = 30;
+        for (int i = 0; i < maxFrames; i++)
+        {
+            MonoBehaviour[] components = chargerRoot.GetComponentsInChildren<MonoBehaviour>(true);
+            Component charger = null;
+            for (int c = 0; c < components.Length; c++)
+            {
+                MonoBehaviour candidate = components[c];
+                if (candidate == null)
+                {
+                    continue;
+                }
+
+                string typeName = candidate.GetType().Name;
+                if (typeName == "BatteryCharger" || typeName == "PowerCellCharger")
+                {
+                    charger = candidate;
+                    break;
+                }
+            }
+
+            if (charger != null)
+            {
+                System.Reflection.MethodInfo hasChargables = charger.GetType().BaseType?.GetMethod("HasChargables", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                System.Reflection.MethodInfo updateVisuals = charger.GetType().BaseType?.GetMethod("UpdateVisuals", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance, null, System.Type.EmptyTypes, null);
+                System.Reflection.MethodInfo toggleUi = charger.GetType().BaseType?.GetMethod("ToggleUI", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                System.Reflection.FieldInfo openedField = charger.GetType().BaseType?.GetField("opened", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                System.Reflection.FieldInfo animatorField = charger.GetType().BaseType?.GetField("animator", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+                System.Reflection.FieldInfo animParamOpenField = charger.GetType().BaseType?.GetField("animParamOpen", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+
+                bool hasItems = hasChargables != null && (bool)hasChargables.Invoke(charger, null);
+                if (hasItems)
+                {
+                    openedField?.SetValue(charger, true);
+                    Component animator = animatorField?.GetValue(charger) as Component;
+                    object hashObj = animParamOpenField?.GetValue(charger);
+                    if (animator != null && hashObj is int hash)
+                    {
+                        System.Reflection.MethodInfo setBool = animator.GetType().GetMethod("SetBool", new[] { typeof(int), typeof(bool) });
+                        setBool?.Invoke(animator, new object[] { hash, true });
+                    }
+
+                    updateVisuals?.Invoke(charger, null);
+                    toggleUi?.Invoke(charger, new object[] { true });
+                }
+
+                yield break;
+            }
+
+            yield return null;
+        }
+    }
+
+    private static void QueueChargerVisualRefresh(GameObject chargerRoot)
+    {
+        if (chargerRoot == null || Instance == null)
+        {
+            return;
+        }
+
+        Instance.StartCoroutine(RefreshChargerVisualsDeferred(chargerRoot));
     }
 }

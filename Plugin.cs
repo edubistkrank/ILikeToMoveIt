@@ -46,6 +46,9 @@ public sealed partial class Plugin : BaseUnityPlugin
     private static TechType moveSessionReactorTechType = TechType.None;
     private static GameObject moveSessionReactorSourceRoot;
     private static GameObject moveSessionReactorDestinationRoot;
+    private static List<Pickupable> moveSessionFiltrationPickupables;
+    private static GameObject moveSessionFiltrationSourceRoot;
+    private static GameObject moveSessionFiltrationDestinationRoot;
     private static bool moveSessionReactorStateCaptured;
     private static float moveSessionReactorPower;
     private static float moveSessionReactorToConsume;
