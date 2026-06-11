@@ -1030,12 +1030,15 @@ public sealed partial class Plugin
             reactorTechType == TechType.BaseBioReactor ? "BaseBioReactor" : "BaseNuclearReactor");
         if (reactorComponent != null)
         {
+            const System.Reflection.BindingFlags fieldFlags = System.Reflection.BindingFlags.Public
+                | System.Reflection.BindingFlags.NonPublic
+                | System.Reflection.BindingFlags.Instance;
             System.Reflection.FieldInfo toConsumeField = reactorComponent.GetType().GetField(
                 "_toConsume",
-                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+                fieldFlags)
                 ?? reactorComponent.GetType().GetField(
                     "toConsume",
-                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                    fieldFlags);
             if (toConsumeField != null)
             {
                 object value = toConsumeField.GetValue(reactorComponent);
@@ -1067,12 +1070,15 @@ public sealed partial class Plugin
             reactorTechType == TechType.BaseBioReactor ? "BaseBioReactor" : "BaseNuclearReactor");
         if (reactorComponent != null)
         {
+            const System.Reflection.BindingFlags fieldFlags = System.Reflection.BindingFlags.Public
+                | System.Reflection.BindingFlags.NonPublic
+                | System.Reflection.BindingFlags.Instance;
             System.Reflection.FieldInfo toConsumeField = reactorComponent.GetType().GetField(
                 "_toConsume",
-                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+                fieldFlags)
                 ?? reactorComponent.GetType().GetField(
                     "toConsume",
-                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                    fieldFlags);
             if (toConsumeField != null)
             {
                 toConsumeField.SetValue(reactorComponent, moveSessionReactorToConsume);
