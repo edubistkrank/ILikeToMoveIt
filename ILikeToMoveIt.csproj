@@ -83,6 +83,7 @@
     <Compile Include="Plugin.Core.cs" />
     <Compile Include="Plugin.Bootstrap.cs" />
     <Compile Include="Plugin.Move.cs" />
+    <Compile Include="Plugin.Move.Reactors.cs" />
     <Compile Include="Plugin.WaterPark.cs" />
     <Compile Include="PluginInfo.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
