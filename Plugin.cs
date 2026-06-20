@@ -31,7 +31,8 @@ public sealed partial class Plugin : BaseUnityPlugin
     private enum MoveBackend
     {
         Regular,
-        Face
+        Face,
+        FloatingLocker
     }
     private static MoveBackend moveBackend;
     private static BaseDeconstructable moveSessionFacePieceSource;
@@ -62,4 +63,11 @@ public sealed partial class Plugin : BaseUnityPlugin
         System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
     private static Sprite moveReticleSprite;
     private static readonly Dictionary<object, Sprite> originalReticleSprites = new Dictionary<object, Sprite>();
+    private static Component moveSessionFloatingRigidbody;
+    private static bool moveSessionFloatingRigidbodyWasKinematic;
+    private static bool moveSessionFloatingRigidbodyUsedGravity;
+    private static Pickupable moveSessionFloatingPickupable;
+    private static bool moveSessionFloatingWasPickupable;
+    private static readonly List<Component> moveSessionFloatingColliders = new List<Component>();
+    private static readonly List<bool> moveSessionFloatingColliderEnabledStates = new List<bool>();
 }

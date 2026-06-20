@@ -190,6 +190,13 @@ public sealed partial class Plugin
         moveHasLastGhostTransform = false;
         moveLastGhostPosition = default;
         moveLastGhostRotation = default;
+        moveSessionFloatingRigidbody = null;
+        moveSessionFloatingRigidbodyWasKinematic = false;
+        moveSessionFloatingRigidbodyUsedGravity = false;
+        moveSessionFloatingPickupable = null;
+        moveSessionFloatingWasPickupable = false;
+        moveSessionFloatingColliders.Clear();
+        moveSessionFloatingColliderEnabledStates.Clear();
     }
 
     private static void InstantBuildMovedFacePiece()
@@ -262,6 +269,13 @@ public sealed partial class Plugin
         moveHasLastGhostTransform = false;
         moveLastGhostPosition = default;
         moveLastGhostRotation = default;
+        moveSessionFloatingRigidbody = null;
+        moveSessionFloatingRigidbodyWasKinematic = false;
+        moveSessionFloatingRigidbodyUsedGravity = false;
+        moveSessionFloatingPickupable = null;
+        moveSessionFloatingWasPickupable = false;
+        moveSessionFloatingColliders.Clear();
+        moveSessionFloatingColliderEnabledStates.Clear();
     }
 
     [HarmonyPatch(typeof(BuilderTool), "GetCustomUseText")]
