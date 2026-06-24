@@ -128,6 +128,7 @@ public sealed partial class Plugin
                 bool canUse = (bool)getExitPointMethod.Invoke(baseLadder, args);
                 if (canUse)
                 {
+                    moveSessionSuppressPlaceUntilFrame = Time.frameCount + 20;
                     player.SetPosition((Vector3)args[0]);
                     moveSessionHoveredBaseLadder = null;
                     moveSessionHoveredEntranceLadder = null;
@@ -145,6 +146,7 @@ public sealed partial class Plugin
                 return false;
             }
 
+            moveSessionSuppressPlaceUntilFrame = Time.frameCount + 20;
             player.SetPosition(entranceLadder.targetTransform.position);
             player.SetCurrentSub(entranceLadder.GetComponentInParent<SubRoot>(), false);
             moveSessionHoveredBaseLadder = null;

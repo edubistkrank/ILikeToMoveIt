@@ -550,6 +550,23 @@ public sealed partial class Plugin
     [HarmonyPatch(typeof(Builder), "TryPlace")]
     private static class Builder_TryPlace_Patch
     {
+        private static bool Prefix(ref bool __result)
+        {
+            if (!moveSessionActive || moveSessionSuppressPlaceUntilFrame < 0)
+            {
+                return true;
+            }
+
+            if (Time.frameCount > moveSessionSuppressPlaceUntilFrame)
+            {
+                moveSessionSuppressPlaceUntilFrame = -1;
+                return true;
+            }
+
+            __result = false;
+            return false;
+        }
+
         private static void Postfix(bool __result)
         {
             if (!moveSessionActive || !__result)

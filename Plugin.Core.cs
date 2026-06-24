@@ -195,6 +195,7 @@ public sealed partial class Plugin
         moveSessionFloatingRigidbodyUsedGravity = false;
         moveSessionFloatingPickupable = null;
         moveSessionFloatingWasPickupable = false;
+        moveSessionSuppressPlaceUntilFrame = -1;
         moveSessionHoveredBaseLadder = null;
         moveSessionHoveredEntranceLadder = null;
         moveSessionFloatingColliders.Clear();
@@ -276,6 +277,7 @@ public sealed partial class Plugin
         moveSessionFloatingRigidbodyUsedGravity = false;
         moveSessionFloatingPickupable = null;
         moveSessionFloatingWasPickupable = false;
+        moveSessionSuppressPlaceUntilFrame = -1;
         moveSessionHoveredBaseLadder = null;
         moveSessionHoveredEntranceLadder = null;
         moveSessionFloatingColliders.Clear();

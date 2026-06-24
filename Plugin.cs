@@ -68,6 +68,7 @@ public sealed partial class Plugin : BaseUnityPlugin
     private static bool moveSessionFloatingRigidbodyUsedGravity;
     private static Pickupable moveSessionFloatingPickupable;
     private static bool moveSessionFloatingWasPickupable;
+    private static int moveSessionSuppressPlaceUntilFrame;
     private static readonly List<Component> moveSessionFloatingColliders = new List<Component>();
     private static readonly List<bool> moveSessionFloatingColliderEnabledStates = new List<bool>();
 }
