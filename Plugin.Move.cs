@@ -501,6 +501,12 @@ public sealed partial class Plugin
     {
         private static bool Prefix(ref bool __result)
         {
+            if (TryUseLadderDuringMovePlacement())
+            {
+                __result = false;
+                return false;
+            }
+
             if (moveSessionActive && moveBackend == MoveBackend.FloatingLocker)
             {
                 moveSessionCommitted = true;
@@ -872,6 +878,18 @@ public sealed partial class Plugin
     {
         private static void Postfix()
         {
+            bool showingLadderHover = TryShowLadderHoverDuringMovePlacement();
+            if (showingLadderHover)
+            {
+                if (GameInput.GetButtonDown(GameInput.Button.LeftHand))
+                {
+                    TryUseLadderDuringMovePlacement();
+                }
+
+                SetMoveReticleIcon(false);
+                return;
+            }
+
             if (moveSessionActive && moveBackend == MoveBackend.FloatingLocker)
             {
                 UpdateFloatingLockerPreview();
