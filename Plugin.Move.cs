@@ -40,6 +40,24 @@ public sealed partial class Plugin
         return true;
     }
 
+    private static void RestoreCanceledFacePiece(Base originalBase, Base.Face originalFace, Base.FaceType originalFaceType)
+    {
+        if (originalBase == null)
+        {
+            return;
+        }
+
+        originalBase.SetFaceType(originalFace, originalFaceType);
+
+        if (originalFaceType == Base.FaceType.Ladder)
+        {
+            Base.Face adjacentFace = Base.GetAdjacentFace(originalFace);
+            originalBase.SetFaceType(adjacentFace, Base.FaceType.Ladder);
+        }
+
+        originalBase.RebuildGeometry();
+    }
+
     private static bool TryBeginFloatingLockerMove(Pickupable pickupable, GameObject root)
     {
         if (pickupable == null || root == null || moveSessionActive)
@@ -757,15 +775,13 @@ public sealed partial class Plugin
                             }
                             else
                             {
-                                originalBase.SetFaceType(originalFace.Value, originalFaceType);
-                                originalBase.RebuildGeometry();
+                                RestoreCanceledFacePiece(originalBase, originalFace.Value, originalFaceType);
                                 RestoreCanceledWaterPark(originalBase, originalFace.Value, waterParkSource, waterParkItems, waterParkPickupables, waterParkPlanterPickupables);
                             }
                         }
                         else
                         {
-                            originalBase.SetFaceType(originalFace.Value, originalFaceType);
-                            originalBase.RebuildGeometry();
+                            RestoreCanceledFacePiece(originalBase, originalFace.Value, originalFaceType);
                             Log.LogInfo($"Builder_End_Patch: restored canceled face piece {originalFaceType}");
 
                             if ((techType == TechType.BaseBioReactor || techType == TechType.BaseNuclearReactor)
