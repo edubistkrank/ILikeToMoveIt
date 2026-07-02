@@ -80,7 +80,8 @@
   <ItemGroup>    
     <Compile Include="Plugin.cs" />
 	<Compile Include="PluginInfo.cs" />
-	<Compile Include="ModConfig.cs" />    
+	<Compile Include="Config\ILikeToMoveItConfig.cs" />
+	<Compile Include="Config\ILikeToMoveItOptions.cs" />
 	<Compile Include="Core\\PluginBootstrap.cs" />
     <Compile Include="Movement\\ReactorMoveHandler.cs" />
     <Compile Include="Movement\\WaterParkMoveHandler.cs" />    
@@ -106,5 +107,6 @@
     <Copy SourceFiles="$(TargetPath)" DestinationFiles="$(PluginOutputDir)\$(AssemblyName).dll" OverwriteReadOnlyFiles="true" />
   </Target>
 </Project>
+
 
 

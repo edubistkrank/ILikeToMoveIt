@@ -1,7 +1,6 @@
 using BepInEx;
 using BepInEx.Logging;
 using HarmonyLib;
-using Nautilus.Handlers;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
@@ -15,5 +14,5 @@ public sealed partial class Plugin : BaseUnityPlugin
     private Harmony harmony;
     internal static ManualLogSource Log { get; private set; }
     private static Plugin Instance { get; set; }
-    internal static ModConfig Settings { get; private set; }
+    internal static ILikeToMoveItConfig Settings { get; private set; }
 }

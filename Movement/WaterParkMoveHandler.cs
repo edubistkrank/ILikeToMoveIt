@@ -657,7 +657,7 @@ public sealed partial class Plugin
                 return true;
             }
 
-            if (Settings != null && Settings.PreventMoveWaterParkIfNotEmpty)
+            if (Settings != null && Settings.PreventMoveWaterParkIfNotEmpty.Value)
             {
                 return true;
             }

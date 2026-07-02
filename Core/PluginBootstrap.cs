@@ -1,6 +1,7 @@
 using BepInEx;
 using HarmonyLib;
 using Nautilus.Handlers;
+using Nautilus.Options;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
@@ -14,7 +15,8 @@ public sealed partial class Plugin
     {
         Instance = this;
         Log = Logger;
-        Settings = OptionsPanelHandler.RegisterModOptions<ModConfig>();
+        Settings = ILikeToMoveItConfig.Bind(Config);
+        OptionsPanelHandler.RegisterModOptions(new ILikeToMoveItOptions(Settings));
         harmony = new Harmony(PluginInfo.Guid);
         LoadMoveReticleSprite();
         harmony.PatchAll();

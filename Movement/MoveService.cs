@@ -94,7 +94,7 @@ public sealed partial class Plugin
             }
 
             StorageContainer storage = constructable.GetComponent<StorageContainer>();
-            if (Settings != null && Settings.PreventMoveIfNotEmpty && storage != null && !storage.IsEmpty())
+            if (Settings != null && Settings.PreventMoveIfNotEmpty.Value && storage != null && !storage.IsEmpty())
             {
                 ErrorMessage.AddMessage(L("No se puede mover: tiene items", "Cannot move: contains items"));
                 return true;
@@ -216,7 +216,7 @@ public sealed partial class Plugin
             moveSessionWaterParkUseVanillaFauna = waterPark != null && waterPark.IsConnected();
             Log.LogInfo($"WaterPark: vanilla fauna handling={(moveSessionWaterParkUseVanillaFauna ? "enabled (stack/connected)" : "disabled")}");
 
-            if (waterPark != null && Settings != null && Settings.PreventMoveWaterParkIfNotEmpty && waterPark.HasItemsInside())
+            if (waterPark != null && Settings != null && Settings.PreventMoveWaterParkIfNotEmpty.Value && waterPark.HasItemsInside())
             {
                 ErrorMessage.AddMessage(L("No se puede mover: tiene items", "Cannot move: contains items"));
                 ClearMoveSession();

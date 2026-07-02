@@ -306,7 +306,7 @@ public sealed partial class Plugin
 
     private static bool IsMovableBySettings(TechType techType)
     {
-        ModConfig settings = Settings;
+        ILikeToMoveItConfig settings = Settings;
         if (settings == null)
         {
             return false;
@@ -314,27 +314,27 @@ public sealed partial class Plugin
 
         if (IsBasePieceTechType(techType))
         {
-            return settings.AllowBasePieces;
+            return settings.AllowBasePieces.Value;
         }
 
         if (IsInteriorPieceTechType(techType))
         {
-            return settings.AllowInteriorPieces;
+            return settings.AllowInteriorPieces.Value;
         }
 
         if (IsInteriorModuleTechType(techType))
         {
-            return settings.AllowInteriorModules;
+            return settings.AllowInteriorModules.Value;
         }
 
         if (IsExternalModuleTechType(techType))
         {
-            return settings.AllowExternalModules;
+            return settings.AllowExternalModules.Value;
         }
 
         if (IsMiscellaneousItemTechType(techType))
         {
-            return settings.AllowMiscellaneousItems;
+            return settings.AllowMiscellaneousItems.Value;
         }
 
         if (!CraftData.GetBuilderIndex(techType, out TechGroup group, out _, out _))
@@ -345,11 +345,11 @@ public sealed partial class Plugin
         switch (group)
         {
             case TechGroup.InteriorModules:
-                return settings.AllowInteriorModules;
+                return settings.AllowInteriorModules.Value;
             case TechGroup.ExteriorModules:
-                return settings.AllowExternalModules;
+                return settings.AllowExternalModules.Value;
             case TechGroup.Miscellaneous:
-                return settings.AllowMiscellaneousItems;
+                return settings.AllowMiscellaneousItems.Value;
             default:
                 return false;
         }
