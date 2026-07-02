@@ -41,7 +41,9 @@ public sealed partial class Plugin
         CaptureReactorRuntimeState(reactorRoot, reactorTechType);
 
         List<Pickupable> found = GetReactorPickupablesFromRoot(reactorRoot, reactorTechType);
+
         List<Pickupable> extracted = RemoveReactorItemsFromRoot(reactorRoot, reactorTechType, found);
+
         if (extracted.Count != found.Count)
         {
             Log.LogWarning($"CaptureReactorItemsFromRoot: extracted {extracted.Count}/{found.Count}, aborting move to avoid stale reactor references");
@@ -120,9 +122,11 @@ public sealed partial class Plugin
                 return result;
             }
 
-            for (int i = 0; i < 8; i++)
+            List<string> slotIds = GetNuclearReactorSlotIdsForMove(equipment);
+
+            for (int i = 0; i < slotIds.Count; i++)
             {
-                string slot = "NuclearReactor" + i;
+                string slot = slotIds[i];
                 InventoryItem itemInSlot = equipment.GetItemInSlot(slot);
                 if (itemInSlot?.item != null)
                 {
@@ -173,6 +177,8 @@ public sealed partial class Plugin
                 return extracted;
             }
 
+            List<string> slotIds = GetNuclearReactorSlotIdsForMove(equipment);
+
             for (int p = 0; p < pickupables.Count; p++)
             {
                 Pickupable pickupable = pickupables[p];
@@ -181,9 +187,9 @@ public sealed partial class Plugin
                     continue;
                 }
 
-                for (int i = 0; i < 8; i++)
+                for (int i = 0; i < slotIds.Count; i++)
                 {
-                    string slot = "NuclearReactor" + i;
+                    string slot = slotIds[i];
                     InventoryItem itemInSlot = equipment.GetItemInSlot(slot);
                     if (itemInSlot?.item == pickupable)
                     {
@@ -290,6 +296,8 @@ public sealed partial class Plugin
                 return false;
             }
 
+            List<string> slotIds = GetNuclearReactorSlotIdsForMove(equipment);
+
             for (int p = pending.Count - 1; p >= 0; p--)
             {
                 Pickupable pickupable = pending[p];
@@ -307,15 +315,17 @@ public sealed partial class Plugin
                 pickupable.ResetTechTypeOverride();
 
                 bool added = false;
+                string addedSlot = null;
 
-                for (int i = 0; i < 8; i++)
+                for (int i = 0; i < slotIds.Count; i++)
                 {
-                    string slot = "NuclearReactor" + i;
+                    string slot = slotIds[i];
                     if (equipment.GetItemInSlot(slot) == null)
                     {
                         if (equipment.AddItem(slot, new InventoryItem(pickupable), true))
                         {
                             added = true;
+                            addedSlot = slot;
                             break;
                         }
                     }
@@ -583,5 +593,56 @@ public sealed partial class Plugin
         catch
         {
         }
+    }
+
+    private static List<string> GetNuclearReactorSlotIdsForMove(Equipment equipment)
+    {
+        List<string> slotIds = new List<string>();
+
+        try
+        {
+            System.Reflection.MethodInfo getSlotsMethod = equipment?.GetType().GetMethod(
+                "GetSlots",
+                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance,
+                null,
+                System.Type.EmptyTypes,
+                null);
+
+            if (getSlotsMethod?.Invoke(equipment, null) is IEnumerable<string> slots)
+            {
+                foreach (string slot in slots)
+                {
+                    if (!string.IsNullOrWhiteSpace(slot)
+                        && slot.StartsWith("NuclearReactor", System.StringComparison.Ordinal)
+                        && !slotIds.Contains(slot))
+                    {
+                        slotIds.Add(slot);
+                    }
+                }
+            }
+        }
+        catch
+        {
+        }
+
+        for (int i = 1; i <= 8; i++)
+        {
+            string slot = "NuclearReactor" + i;
+            if (!slotIds.Contains(slot))
+            {
+                slotIds.Add(slot);
+            }
+        }
+
+        for (int i = 0; i <= 7; i++)
+        {
+            string slot = "NuclearReactor" + i;
+            if (!slotIds.Contains(slot))
+            {
+                slotIds.Add(slot);
+            }
+        }
+
+        return slotIds;
     }
 }
