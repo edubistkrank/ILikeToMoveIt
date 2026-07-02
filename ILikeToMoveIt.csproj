@@ -77,17 +77,21 @@
       <Private>False</Private>
     </Reference>
   </ItemGroup>
-  <ItemGroup>
-    <Compile Include="ModConfig.cs" />
+  <ItemGroup>    
     <Compile Include="Plugin.cs" />
-    <Compile Include="Plugin.Core.cs" />
-    <Compile Include="Plugin.Bootstrap.cs" />
-    <Compile Include="Plugin.Move.cs" />
-    <Compile Include="Plugin.Move.LadderTransit.cs" />
-    <Compile Include="Plugin.Move.Reactors.cs" />
-    <Compile Include="Plugin.WaterPark.cs" />
-    <Compile Include="PluginInfo.cs" />
+	<Compile Include="PluginInfo.cs" />
+	<Compile Include="ModConfig.cs" />    
+	<Compile Include="Core\\PluginBootstrap.cs" />
+    <Compile Include="Movement\\ReactorMoveHandler.cs" />
+    <Compile Include="Movement\\WaterParkMoveHandler.cs" />    
     <Compile Include="Properties\AssemblyInfo.cs" />
+	<Compile Include="Movement\\MoveState.cs" />
+	<Compile Include="Movement\\MoveSession.cs" />
+    <Compile Include="Movement\\MoveService.cs" />
+    <Compile Include="Movement\\FloatingLockerMoveHandler.cs" />
+	<Compile Include="Movement\\LadderTransitHandler.cs" />
+	<Compile Include="Patches\\BuilderToolPatches.cs" />
+	<Compile Include="Patches\\BuilderPatches.cs" />
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="Assets\move.png" />
@@ -102,3 +106,5 @@
     <Copy SourceFiles="$(TargetPath)" DestinationFiles="$(PluginOutputDir)\$(AssemblyName).dll" OverwriteReadOnlyFiles="true" />
   </Target>
 </Project>
+
+

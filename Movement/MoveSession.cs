@@ -3,7 +3,8 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
-namespace ILikeToMoveIt;
+namespace ILikeToMoveIt
+{
 
 public sealed partial class Plugin
 {
@@ -284,19 +285,6 @@ public sealed partial class Plugin
         moveSessionFloatingColliderEnabledStates.Clear();
     }
 
-    [HarmonyPatch(typeof(BuilderTool), "GetCustomUseText")]
-    private static class BuilderTool_GetCustomUseText_Patch
-    {
-        private static void Postfix(ref string __result)
-        {
-            string left = GameInput.FormatButton(GameInput.Button.LeftHand, false);
-            string hint = $"Alt + {left}: {L("Mover locker", "Move locker")}";
-            __result = string.IsNullOrEmpty(__result)
-                ? hint
-                : $"{__result}\n{hint}";
-        }
-    }
-
     private static TechType GetBaseDeconstructableTechType(BaseDeconstructable baseDecon)
     {
         if (baseDecon == null)
@@ -475,4 +463,5 @@ public sealed partial class Plugin
                 return false;
         }
     }
+}
 }
